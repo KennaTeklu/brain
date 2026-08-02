@@ -11782,14 +11782,38 @@ function validateHTML(html) {
     const SUB_CACHE_KEY = 'paywall_sub_cache';
 
     // ───── HELPERS ─────
-    function getUserId() {
-        let userId = localStorage.getItem(USER_KEY);
-        if (!userId) {
-            userId = 'u_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
-            localStorage.setItem(USER_KEY, userId);
-        }
-        return userId;
-    }
+	// Cache the ID in memory after the first load
+	let _cachedUserId = null;
+	
+	function getUserId() {
+	    // 1. Fastest path: already in memory → return immediately (0 DOM/Storage overhead)
+	    if (_cachedUserId) return _cachedUserId;
+	
+	    try {
+	        // 2. Check localStorage (only happens once per session)
+	        let userId = localStorage.getItem('paywall_userId');
+	        
+	        if (!userId) {
+	            // 3. Generate only if absolutely necessary (once per browser)
+	            if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+	                userId = crypto.randomUUID();
+	            } else {
+	                // Fallback for very old browsers (still practically unique)
+	                userId = 'u_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10);
+	            }
+	            localStorage.setItem('paywall_userId', userId);
+	        }
+	
+	        // 4. Store in memory cache for next time
+	        _cachedUserId = userId;
+	        return userId;
+	
+	    } catch (e) {
+	        // 5. Ultimate fallback if localStorage is broken/full (returns a new ID every time, but keeps the app from crashing)
+	        // Note: We don't cache this because it can't be saved, but it ensures the function never throws.
+	        return 'fallback_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+	    }
+	}
 
     function getCachedStatus() {
         const raw = localStorage.getItem(SUB_CACHE_KEY);
