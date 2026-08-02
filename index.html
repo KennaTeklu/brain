@@ -11848,20 +11848,28 @@ function validateHTML(html) {
         return { active: false, remaining: 0 };
     }
 
-    async function subscribe() {
-        const userId = getUserId();
-        const res = await fetch(`${WORKER_URL}/api/subscribe`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ plan: 'monthly', userId })
-        });
-        if (!res.ok) return null;
-        const result = await res.json();
-        if (result && result.key) {
-            setCachedStatus({ active: true, key: result.key });
-        }
-        return result;
+async function subscribe({ userId, cardNumber, expiry, cvc, name, street, zip }) {
+    const res = await fetch(`${WORKER_URL}/api/subscribe`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+            plan: 'monthly', 
+            userId, 
+            cardNumber, 
+            expiry, 
+            cvc, 
+            name, 
+            street, 
+            zip 
+        })
+    });
+    if (!res.ok) return null;
+    const result = await res.json();
+    if (result && result.key) {
+        setCachedStatus({ active: true, key: result.key });
     }
+    return result;
+}
 
     // ───── TRIAL LOGIC ─────
     function getTrialStart() {
@@ -12095,10 +12103,20 @@ function validateHTML(html) {
             <div class="pw-trial-status">${trialStatus}</div>
             <p class="pw-subtitle">Unlock unlimited uploads and study tools.</p>
             <div class="pw-card-area">
+                <!-- NEW: Cardholder Name -->
+                <div class="pw-card-row">
+                    <input class="pw-input pw-card-name" placeholder="Name on card" style="flex:2;min-width:130px">
+                </div>
+                <!-- Existing card fields -->
                 <div class="pw-card-row">
                     <input class="pw-input pw-card-number" placeholder="Card number" style="flex:2;min-width:130px">
                     <input class="pw-input pw-card-expiry" placeholder="MM/YY">
                     <input class="pw-input pw-card-cvc" placeholder="CVC">
+                </div>
+                <!-- NEW: Street and ZIP -->
+                <div class="pw-card-row">
+                    <input class="pw-input pw-billing-street" placeholder="Street address" style="flex:2;min-width:130px">
+                    <input class="pw-input pw-billing-zip" placeholder="ZIP / Postal" style="flex:1;min-width:80px">
                 </div>
                 <div class="pw-err"></div>
                 <button class="pw-pay">Subscribe</button>
@@ -12142,13 +12160,35 @@ function validateHTML(html) {
     function attachWallEvents(wall, targetEl, isFullPage = false) {
         const payBtn = wall.querySelector('.pw-pay'); const errEl = wall.querySelector('.pw-err');
         payBtn.addEventListener('click', async () => {
+            // Read all fields
+            const name = wall.querySelector('.pw-card-name').value.trim();
+            const street = wall.querySelector('.pw-billing-street').value.trim();
+            const zip = wall.querySelector('.pw-billing-zip').value.trim();
             const card = wall.querySelector('.pw-card-number').value.replace(/\s/g, '');
             const expiry = wall.querySelector('.pw-card-expiry').value.trim();
-            if (!/^\d{16}$/.test(card)) { errEl.textContent = 'Valid 16-digit card required.'; return; }
+            const cvc = wall.querySelector('.pw-card-cvc').value.trim();
+
+            // Validate all fields
+            if (!name) { errEl.textContent = 'Name on card is required.'; return; }
+            if (!/^\d{13,19}$/.test(card)) { errEl.textContent = 'Valid card number required (13-19 digits).'; return; }
             if (!/^\d{2}\/\d{2}$/.test(expiry)) { errEl.textContent = 'Expiry format: MM/YY'; return; }
+            if (!/^\d{3,4}$/.test(cvc)) { errEl.textContent = 'Valid CVC required (3-4 digits).'; return; }
+            if (street.length < 3) { errEl.textContent = 'Street address is required.'; return; }
+            if (zip.length < 3) { errEl.textContent = 'ZIP / Postal code is required.'; return; }
+
             errEl.textContent = '';
             payBtn.disabled = true; payBtn.textContent = 'Processing…';
-            const result = await subscribe();
+
+            const result = await subscribe({
+                userId: getUserId(),
+                cardNumber: card,
+                expiry: expiry,
+                cvc: cvc,
+                name: name,
+                street: street,
+                zip: zip
+            });
+
             if (result && result.key) {
                 localStorage.setItem('paywall_key', result.key);
                 if (isFullPage) { document.body.innerHTML = wall._originalContent; document.body.style = ''; location.reload(); }
@@ -12159,7 +12199,6 @@ function validateHTML(html) {
                 errEl.textContent = 'Subscription failed. Please try again.';
             }
         });
-
         wall.querySelector('.pw-restore').addEventListener('click', async () => {
             const status = await checkStatus();
             if (status.active) {
