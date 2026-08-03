@@ -2930,6 +2930,245 @@ button:hover,
     100% { box-shadow: 0 0 10px rgba(45,212,191,0.4); transform: scale(1); }
 }
 </style>
+<style>
+/* ========== PAYWALL OVERLAY – RESPONSIVE & SCROLLABLE ========== */
+#paywall-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 100000;
+    background: rgba(0, 0, 0, 0.75);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    display: none;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+    overflow: hidden;
+}
+
+#paywall-overlay .modal-medium {
+    max-width: 480px;
+    width: 100%;
+    max-height: 95vh;
+    overflow-y: auto;
+    background: rgba(0, 0, 0, 0.95);
+    border: 1px solid rgba(45, 212, 191, 0.3);
+    border-radius: 28px;
+    padding: 28px 24px;
+    color: #f8fafc;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.8);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    scrollbar-width: thin;
+}
+
+#paywall-overlay .modal-medium::-webkit-scrollbar {
+    width: 4px;
+}
+#paywall-overlay .modal-medium::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 4px;
+}
+#paywall-overlay .modal-medium::-webkit-scrollbar-thumb {
+    background: var(--accent, #2dd4bf);
+    border-radius: 4px;
+}
+
+#paywall-overlay h3 {
+    font-size: 1.4rem;
+    font-weight: 700;
+    margin: 0;
+}
+#paywall-overlay h3 span {
+    color: #2dd4bf;
+}
+
+#paywall-close-btn {
+    background: none;
+    border: none;
+    color: #94a3b8;
+    font-size: 1.4rem;
+    cursor: pointer;
+    padding: 4px 8px;
+    transition: 0.2s;
+}
+#paywall-close-btn:hover {
+    color: #f8fafc;
+}
+
+/* Trial status badge */
+#paywall-trial-status {
+    background: rgba(45, 212, 191, 0.1);
+    border: 1px solid rgba(45, 212, 191, 0.2);
+    border-radius: 40px;
+    padding: 0.2rem 1rem;
+    font-size: 0.75rem;
+    color: #2dd4bf;
+    font-weight: 600;
+    display: inline-block;
+    margin-bottom: 8px;
+    text-align: center;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+/* Price breakdown */
+.price-breakdown {
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 16px;
+    padding: 16px;
+    margin: 12px 0;
+    font-size: 0.9rem;
+    color: #e2e8f0;
+}
+.price-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 4px 0;
+    color: #94a3b8;
+}
+.price-row .amount {
+    font-weight: 500;
+}
+.price-row.total {
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    margin-top: 8px;
+    padding-top: 12px;
+    font-weight: 700;
+    color: #f8fafc;
+    font-size: 1.1rem;
+}
+
+/* Payment Element */
+#payment-element {
+    margin: 12px 0;
+    min-height: 80px;
+    width: 100%;
+}
+
+.pw-err {
+    color: #f87171;
+    font-size: 0.85rem;
+    min-height: 1.2rem;
+    margin-top: 4px;
+}
+
+#paywall-submit-btn {
+    width: 100%;
+    background: #2dd4bf;
+    border: none;
+    border-radius: 40px;
+    padding: 14px;
+    font-weight: 700;
+    font-size: 1rem;
+    color: #030408;
+    cursor: pointer;
+    transition: 0.15s;
+    margin-top: 8px;
+}
+#paywall-submit-btn:hover {
+    background: #14b8a6;
+}
+#paywall-submit-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+#payment-status {
+    color: #4ade80;
+    font-size: 0.9rem;
+    margin-top: 8px;
+    text-align: center;
+    font-weight: 600;
+}
+
+/* Moving Boxes Game Container */
+#game-container {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 16px;
+    padding: 0.4rem 0.4rem 0.2rem;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    margin: 12px 0;
+}
+#pw-movingboxes-canvas {
+    background: #0a0c12;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    width: 100%;
+    max-width: 240px;
+    aspect-ratio: 1 / 1;
+    display: block;
+    touch-action: none;
+}
+
+/* Trust footer */
+#paywall-overlay .trust-footer {
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    font-size: 0.65rem;
+    color: #475569;
+}
+#paywall-overlay .trust-footer span {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+#paywall-overlay .trust-footer i {
+    color: #2dd4bf;
+    font-size: 0.8rem;
+}
+
+/* ========== RESPONSIVE ========== */
+@media (max-width: 600px) {
+    #paywall-overlay .modal-medium {
+        padding: 20px 16px;
+        max-height: 90vh;
+    }
+    #paywall-overlay h3 {
+        font-size: 1.2rem;
+    }
+    #pw-movingboxes-canvas {
+        max-width: 180px;
+    }
+    #paywall-overlay .trust-footer {
+        gap: 8px;
+        font-size: 0.6rem;
+    }
+}
+
+@media (max-width: 400px) {
+    #paywall-overlay .modal-medium {
+        padding: 16px 12px;
+        border-radius: 20px;
+    }
+    #paywall-overlay h3 {
+        font-size: 1rem;
+    }
+    .price-breakdown {
+        font-size: 0.8rem;
+        padding: 12px;
+    }
+    #paywall-submit-btn {
+        font-size: 0.9rem;
+        padding: 12px;
+    }
+}
+
+/* Prevent scrolling on the body when overlay is open */
+body.modal-open {
+    overflow: hidden;
+}
+</style>
 </head>
 <body>
 
@@ -11997,39 +12236,58 @@ function validateHTML(html) {
         }
     }
 
-    async function handlePayment() {
-        if (!elementsInstance || !clientSecret) return;
-        const overlay = document.getElementById('paywall-overlay');
-        const submitBtn = overlay.querySelector('#paywall-submit-btn');
-        const errorEl = overlay.querySelector('#payment-error');
-        const statusEl = overlay.querySelector('#payment-status');
+async function handlePayment() {
+    if (!elementsInstance || !clientSecret) return;
+    const overlay = document.getElementById('paywall-overlay');
+    const submitBtn = overlay.querySelector('#paywall-submit-btn');
+    const errorEl = overlay.querySelector('#payment-error');
+    const statusEl = overlay.querySelector('#payment-status');
 
-        submitBtn.disabled = true;
-        submitBtn.innerHTML = '<span class="loader"></span> Processing…';
-        errorEl.textContent = '';
-        statusEl.textContent = '';
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span class="loader"></span> Processing…';
+    errorEl.textContent = '';
+    statusEl.textContent = '';
 
-        const stripe = Stripe(PUBLISHABLE_KEY);
-        const { error } = await stripe.confirmPayment({
-            elements: elementsInstance,
-            confirmParams: { return_url: window.location.origin },
-            redirect: 'if_required'
-        });
+    const stripe = Stripe(PUBLISHABLE_KEY);
+    const { error, paymentIntent } = await stripe.confirmPayment({
+        elements: elementsInstance,
+        confirmParams: { return_url: window.location.origin },
+        redirect: 'if_required'
+    });
 
-        if (error) {
-            errorEl.textContent = error.message || 'Payment failed.';
-            submitBtn.disabled = false;
-            submitBtn.textContent = 'Subscribe — $20.73';
-        } else {
-            statusEl.textContent = '✅ Subscription active!';
-            submitBtn.textContent = '✅ Subscribed';
-            localStorage.setItem('paywall_sub_cache', JSON.stringify({ active: true, timestamp: Date.now() }));
-            setTimeout(() => {
-                window.__paywall.close();
-                Swal.fire({ title: 'Subscription active', icon: 'success', background: '#0f172a', color: '#f8fafc' });
-            }, 1500);
-        }
+    if (error) {
+        errorEl.textContent = error.message || 'Payment failed.';
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Subscribe — $20.73';
+        return;
     }
+
+    // --- NEW: Verify the payment on the server ---
+    try {
+        const userId = getUserId();
+        const verifyRes = await fetch(`${WORKER_URL}/api/confirm-subscription`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId, paymentIntentId: paymentIntent.id })
+        });
+        if (!verifyRes.ok) throw new Error('Server verification failed');
+        const data = await verifyRes.json();
+        if (!data.active) throw new Error('Subscription not active');
+
+        // Success – now set the cache
+        statusEl.textContent = '✅ Subscription active!';
+        submitBtn.textContent = '✅ Subscribed';
+        localStorage.setItem('paywall_sub_cache', JSON.stringify({ active: true, timestamp: Date.now() }));
+        setTimeout(() => {
+            window.__paywall.close();
+            Swal.fire({ title: 'Subscription active', icon: 'success', background: '#0f172a', color: '#f8fafc' });
+        }, 1500);
+    } catch (err) {
+        errorEl.textContent = 'Verification failed. Please contact support.';
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Subscribe — $20.73';
+    }
+}
 
     // ───── LOADER STYLES ─────
     const style = document.createElement('style');
