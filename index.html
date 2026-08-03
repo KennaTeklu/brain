@@ -2944,6 +2944,7 @@ button:hover,
     align-items: center;
     padding: 20px;
     overflow: hidden;
+	pointer-events: none; 
 }
 
 #paywall-overlay .modal-medium {
@@ -2961,6 +2962,7 @@ button:hover,
     flex-direction: column;
     gap: 4px;
     scrollbar-width: thin;
+	pointer-events: auto;
 }
 
 #paywall-overlay .modal-medium::-webkit-scrollbar {
@@ -3683,38 +3685,29 @@ body.modal-open {
         </div>
     </div>
 </div>
-<!-- ====== PAYWALL OVERLAY – FINAL VERSION ====== -->
+<!-- ====== PAYWALL OVERLAY – NO CLOSE BUTTON ====== -->
 <div id="paywall-overlay" class="modal-bg" style="display:none; z-index:100000;">
     <div class="modal-medium" style="max-width:480px; background:rgba(0,0,0,0.95); border:1px solid rgba(45,212,191,0.3);">
 
-        <!-- Header -->
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-            <h3 style="margin:0; color:#f8fafc;">Subscribe <span style="color:#2dd4bf;">$19/mo</span></h3>
-            <button id="paywall-close-btn" style="background:none;border:none;color:#94a3b8;font-size:1.4rem;cursor:pointer;">✕</button>
-        </div>
+        <!-- Header (no close button) -->
+        <h3 style="margin:0 0 4px 0; color:#f8fafc; text-align:center;">
+            Subscribe <span style="color:#2dd4bf;">$19/mo</span>
+        </h3>
 
-        <!-- Trial Status (dynamic) -->
-        <div id="paywall-trial-status" style="background:rgba(45,212,191,0.1); border:1px solid rgba(45,212,191,0.2); border-radius:40px; padding:0.2rem 1rem; font-size:0.7rem; color:#2dd4bf; font-weight:600; display:inline-block; margin-bottom:8px; text-align:center; width:100%;">
+        <!-- Trial Status -->
+        <div id="paywall-trial-status" style="background:rgba(45,212,191,0.1); border:1px solid rgba(45,212,191,0.2); border-radius:40px; padding:0.2rem 1rem; font-size:0.7rem; color:#2dd4bf; font-weight:600; display:inline-block; margin:4px auto 8px; text-align:center; width:100%;">
             📅 Trial ends in <span id="trial-days-left">7</span> days
         </div>
 
-        <!-- Slogan -->
-        <p style="color:#94a3b8; margin-bottom:16px; font-size:0.9rem;">Unlock unlimited uploads and study tools.</p>
+        <p style="color:#94a3b8; margin-bottom:16px; font-size:0.9rem; text-align:center;">
+            Unlock unlimited uploads and study tools.
+        </p>
 
         <!-- Price Breakdown -->
-        <div class="price-breakdown" style="background:rgba(255,255,255,0.03); border-radius:16px; padding:16px; margin:16px 0; font-size:0.9rem; color:#e2e8f0;">
-            <div class="price-row" style="display:flex; justify-content:space-between; padding:4px 0; color:#94a3b8;">
-                <span>Subtotal</span>
-                <span class="amount">$19.00</span>
-            </div>
-            <div class="price-row" style="display:flex; justify-content:space-between; padding:4px 0; color:#94a3b8;">
-                <span>Tax (9.1%)</span>
-                <span class="amount">$1.73</span>
-            </div>
-            <div class="price-row total" style="border-top:1px solid rgba(255,255,255,0.1); margin-top:8px; padding-top:12px; font-weight:700; color:#f8fafc; font-size:1.1rem; display:flex; justify-content:space-between;">
-                <span>Total</span>
-                <span class="amount">$20.73</span>
-            </div>
+        <div class="price-breakdown" style="background:rgba(255,255,255,0.03); border-radius:16px; padding:16px; margin:12px 0; font-size:0.9rem; color:#e2e8f0;">
+            <div class="price-row"><span>Subtotal</span><span class="amount">$19.00</span></div>
+            <div class="price-row"><span>Tax (9.1%)</span><span class="amount">$1.73</span></div>
+            <div class="price-row total"><span>Total</span><span class="amount">$20.73</span></div>
         </div>
 
         <!-- Stripe Payment Element -->
@@ -3723,8 +3716,8 @@ body.modal-open {
         <button id="paywall-submit-btn" class="pw-pay" style="width:100%; background:#2dd4bf; border:none; border-radius:40px; padding:14px; font-weight:700; font-size:1rem; color:#030408; cursor:pointer; transition:0.15s; margin-top:8px;">Subscribe — $20.73</button>
         <div id="payment-status" style="color:#4ade80; font-size:0.9rem; margin-top:8px; text-align:center;"></div>
 
-        <!-- MOVING BOXES GAME (Upgraded) -->
-        <div id="game-container" style="width:100%; display:flex; flex-direction:column; align-items:center; background:rgba(0,0,0,0.3); border-radius:16px; padding:0.4rem 0.4rem 0.2rem 0.4rem; border:1px solid rgba(255,255,255,0.06); margin:12px 0;">
+        <!-- Moving Boxes Game -->
+        <div id="game-container" style="width:100%; display:flex; flex-direction:column; align-items:center; background:rgba(0,0,0,0.3); border-radius:16px; padding:0.4rem 0.4rem 0.2rem; border:1px solid rgba(255,255,255,0.06); margin:12px 0;">
             <div style="display:flex; justify-content:space-between; width:100%; font-size:0.7rem; color:#94a3b8; padding:0 0.1rem 0.2rem 0.1rem;">
                 <span>📦 Moving Boxes <span style="font-weight:400; color:#64748b;">(arrow keys)</span></span>
                 <div style="display:flex; gap:12px;">
