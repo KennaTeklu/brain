@@ -12558,8 +12558,8 @@ async function handlePayment() {
                 const arrayBuffer = await file.arrayBuffer();
                 const result = await mammoth.convertToHtml({ arrayBuffer });
                 const temp = document.createElement('div');
-                temp.innerHTML = DOMPurify.sanitize(result.value);
-                return temp.innerText.trim();
+                temp.innerHTML = result.value;
+                return temp.textContent.trim();
             }
             if (file.name.endsWith('.epub')) {
                 await ensureLib('zip');
