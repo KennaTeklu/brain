@@ -12502,6 +12502,107 @@ async function handlePayment() {
     console.log('[Paywall] Fully integrated with Stripe Payment Element and Moving Boxes.');
 })();
 </script>
+<!-- ===== HIGGS READER INTEGRATION (Extraction Engine) ===== -->
+<script>
+    (function() {
+        const libs = {
+            pdf: { url: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js', check: () => typeof pdfjsLib !== 'undefined' },
+            mammoth: { url: 'https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.2/mammoth.browser.min.js', check: () => typeof mammoth !== 'undefined' },
+            zip: { url: 'https://cdn.jsdelivr.net/npm/@zip.js/zip.js@2.7.52/dist/zip.min.js', check: () => typeof zip !== 'undefined' }
+        };
+
+        function loadScript(url) {
+            return new Promise((resolve, reject) => {
+                const existing = document.querySelector('script[src="' + url + '"]');
+                if (existing) {
+                    if (existing.dataset.loaded) resolve();
+                    else existing.addEventListener('load', resolve, { once: true });
+                    return;
+                }
+                const s = document.createElement('script');
+                s.src = url;
+                s.onload = () => { s.dataset.loaded = 'true'; resolve(); };
+                s.onerror = reject;
+                document.head.appendChild(s);
+            });
+        }
+
+        async function ensureLib(libName) {
+            const lib = libs[libName];
+            if (!lib.check()) {
+                await loadScript(lib.url);
+            }
+        }
+
+        window.extractTextFromFile = async function(file, maxPages = 20) {
+            if (!file) return '';
+            if (file.type === 'application/pdf' || file.name.endsWith('.pdf')) {
+                await ensureLib('pdf');
+                const arrayBuffer = await file.arrayBuffer();
+                const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                let fullText = '';
+                const pagesToExtract = Math.min(pdf.numPages, maxPages);
+                for (let i = 1; i <= pagesToExtract; i++) {
+                    const page = await pdf.getPage(i);
+                    const textContent = await page.getTextContent();
+                    const pageText = textContent.items.map(item => item.str).join(' ').replace(/\s+/g, ' ');
+                    fullText += pageText + '\n\n';
+                }
+                return fullText.trim();
+            }
+            if (file.type === 'text/plain' || file.name.endsWith('.txt')) {
+                return await file.text();
+            }
+            if (file.name.endsWith('.docx')) {
+                await ensureLib('mammoth');
+                const arrayBuffer = await file.arrayBuffer();
+                const result = await mammoth.convertToHtml({ arrayBuffer });
+                const temp = document.createElement('div');
+                temp.innerHTML = DOMPurify.sanitize(result.value);
+                return temp.innerText.trim();
+            }
+            if (file.name.endsWith('.epub')) {
+                await ensureLib('zip');
+                const arrayBuffer = await file.arrayBuffer();
+                const zipReader = new zip.ZipReader(new zip.BlobReader(new Blob([arrayBuffer])));
+                const entries = await zipReader.getEntries();
+                const containerEntry = entries.find(e => e.filename === 'META-INF/container.xml');
+                if (!containerEntry) throw new Error('Invalid EPUB');
+                const containerXml = await containerEntry.getData(new zip.TextWriter());
+                const parser = new DOMParser();
+                const containerDoc = parser.parseFromString(containerXml, 'application/xml');
+                const rootfilePath = containerDoc.querySelector('rootfile').getAttribute('full-path');
+                const opfEntry = entries.find(e => e.filename === rootfilePath);
+                const opfXml = await opfEntry.getData(new zip.TextWriter());
+                const opfDoc = parser.parseFromString(opfXml, 'application/xml');
+                const spineItems = opfDoc.querySelectorAll('spine itemref');
+                const opfDir = rootfilePath.substring(0, rootfilePath.lastIndexOf('/') + 1);
+                const itemMap = new Map();
+                opfDoc.querySelectorAll('manifest item').forEach(item => {
+                    const id = item.getAttribute('id');
+                    const href = item.getAttribute('href');
+                    if(id && href) itemMap.set(id, opfDir + href);
+                });
+                let fullText = '';
+                for(let i=0; i<spineItems.length; i++) {
+                    const idref = spineItems[i].getAttribute('idref');
+                    const itemPath = itemMap.get(idref);
+                    if(!itemPath) continue;
+                    const contentEntry = entries.find(e => e.filename === itemPath);
+                    if(contentEntry) {
+                        const contentXml = await contentEntry.getData(new zip.TextWriter());
+                        const contentDoc = parser.parseFromString(contentXml, 'application/xhtml+xml');
+                        const body = contentDoc.querySelector('body');
+                        if(body) fullText += body.innerText + '\n\n';
+                    }
+                }
+                await zipReader.close();
+                return fullText.trim();
+            }
+            return '';
+        };
+    })();
+</script>
 <script>
 // ================================================================
 // ONBOARDING WIZARD + QUIZ HIJACKING – FINAL ROBUST VERSION
@@ -12698,12 +12799,12 @@ function showFloatingArrow(targetSelector, message, duration = 8000) {
             color: '#e2e8f0', position: 'relative'
         });
 
-        // Progress dots
+         // Progress dots
         const progress = document.createElement('div');
         Object.assign(progress.style, {
             display: 'flex', gap: '8px', justifyContent: 'center', marginBottom: '24px'
         });
-        for (let i = 1; i <= 7; i++) {
+        for (let i = 1; i <= 5; i++) {
             const dot = document.createElement('span');
             dot.dataset.step = i;
             Object.assign(dot.style, {
@@ -12726,26 +12827,6 @@ function showFloatingArrow(targetSelector, message, duration = 8000) {
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             marginTop: '24px', gap: '12px'
         });
-
-        const skipBtn = document.createElement('button');
-        skipBtn.className = 'btn-secondary';
-        skipBtn.textContent = 'Skip →';
-        Object.assign(skipBtn.style, {
-            background: 'rgba(255,255,255,0.06) !important',
-            border: '1px solid rgba(255,255,255,0.1) !important',
-            color: '#94a3b8 !important', padding: '8px 20px',
-            borderRadius: '40px', cursor: 'pointer', fontSize: '0.85rem'
-        });
-        skipBtn.addEventListener('click', () => {
-            localStorage.setItem(ONBOARDING_KEY, 'true');
-            modal.remove();
-            createOrGetBrainNode();
-            Core.refresh().then(() => {
-                Graph3D.fitToScreen(true);
-                setTimeout(() => showFloatingArrow('#collapse-toggle-btn', 'Click the ☰ menu to start exploring'), 500);
-            });
-        });
-        footer.appendChild(skipBtn);
 
         const navRight = document.createElement('div');
         navRight.style.cssText = 'display: flex; gap: 8px;';
@@ -12778,24 +12859,7 @@ function showFloatingArrow(targetSelector, message, duration = 8000) {
         footer.appendChild(navRight);
         container.appendChild(footer);
 
-        // Close X
-        const closeBtn = document.createElement('button');
-        closeBtn.textContent = '✕';
-        Object.assign(closeBtn.style, {
-            position: 'absolute', top: '16px', right: '20px',
-            background: 'transparent', border: 'none', color: '#94a3b8',
-            fontSize: '1.4rem', cursor: 'pointer', padding: '4px 8px'
-        });
-        closeBtn.addEventListener('click', () => {
-            localStorage.setItem(ONBOARDING_KEY, 'true');
-            modal.remove();
-            createOrGetBrainNode();
-            Core.refresh().then(() => {
-                Graph3D.fitToScreen(true);
-                setTimeout(() => showFloatingArrow('#collapse-toggle-btn', 'Click the ☰ menu to start exploring'), 500);
-            });
-        });
-        container.appendChild(closeBtn);
+
 
         modal.appendChild(container);
         document.body.appendChild(modal);
@@ -12808,9 +12872,43 @@ function showFloatingArrow(targetSelector, message, duration = 8000) {
 
             const title = document.createElement('h3');
             Object.assign(title.style, {
-                fontSize: '1.2rem', fontWeight: '700', color: '#f8fafc', margin: '0 0 4px 0'
+                fontSize: '1.2rem', fontWeight: '700', color: '#f8fafc', margin: '0 0 4px 0',
+                display: 'flex', alignItems: 'center', gap: '8px'
             });
             title.textContent = stepData.title;
+            if (stepData.info) {
+                const infoBtn = document.createElement('button');
+                infoBtn.textContent = 'ℹ️';
+                infoBtn.title = stepData.info;
+                Object.assign(infoBtn.style, {
+                    background: 'rgba(45,212,191,0.15)',
+                    border: '1px solid rgba(45,212,191,0.3)',
+                    color: '#2dd4bf',
+                    borderRadius: '50%',
+                    width: '24px', height: '24px',
+                    fontSize: '0.8rem', lineHeight: '1',
+                    cursor: 'pointer',
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    marginLeft: '8px',
+                    padding: '0'
+                });
+                infoBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (typeof Swal !== 'undefined') {
+                        Swal.fire({
+                            title: 'ℹ️ Info',
+                            text: stepData.info,
+                            background: 'rgba(15,18,28,0.95)',
+                            color: '#f8fafc',
+                            confirmButtonColor: '#2dd4bf',
+                            confirmButtonText: 'Got it'
+                        });
+                    } else {
+                        alert(stepData.info);
+                    }
+                });
+                title.appendChild(infoBtn);
+            }
             content.appendChild(title);
 
             const desc = document.createElement('p');
@@ -12828,7 +12926,7 @@ function showFloatingArrow(targetSelector, message, duration = 8000) {
             });
 
             backBtn.style.display = step === 1 ? 'none' : 'inline-flex';
-            nextBtn.textContent = step === 6 ? '✨ Finish' : 'Next →';
+            nextBtn.textContent = step === 5 ? '✨ Finish' : 'Next →';
             nextBtn.style.opacity = '0.5';
             nextBtn.style.pointerEvents = 'none';
             nextBtn.dataset.ready = 'false';
@@ -12839,6 +12937,7 @@ function getStepData(step) {
         1: {
             title: '🧠 Welcome to your Brain',
             description: 'What are you here to study? Type your primary subject or goal below.',
+            info: 'This helps customize your brain and AI prompts. For example, if you’re studying for the MCAT, type "MCAT".',
             render: (container) => {
                 const input = document.createElement('input');
                 input.id = 'onboarding-subject-input';
@@ -12863,115 +12962,110 @@ function getStepData(step) {
                 setTimeout(() => input.focus(), 100);
             }
         },
-        // ---- NEW LANGUAGE STEP ----
         2: {
-            title: '🌐 Content language',
-            description: 'Choose the language your study material is in. This sets the language for your content and quizzes.',
+            title: '📤 Upload your study material',
+            description: 'Upload a PDF, DOCX, TXT, or EPUB (e.g., syllabus, table of contents). We will extract the text and embed it into the AI prompt so you don\'t need to attach the full book.',
+            info: 'We only need the first ~20 pages (or table of contents) to understand the structure. You can also paste the text directly if you prefer.',
             render: (container) => {
                 const wrapper = document.createElement('div');
                 wrapper.style.cssText = 'display: flex; flex-direction: column; gap: 12px; margin-top: 8px;';
 
-                const languages = [
-                    'English', 'Spanish', 'French', 'German', 'Italian', 'Portuguese',
-                    'Russian', 'Arabic', 'Chinese (Simplified)', 'Japanese', 'Korean',
-                    'Hindi', 'Bengali', 'Urdu', 'Turkish', 'Dutch', 'Polish', 'Swedish'
-                ];
+                // File input + drag & drop zone
+                const fileInput = document.createElement('input');
+                fileInput.type = 'file';
+                fileInput.accept = '.pdf,.txt,.docx,.epub';
+                fileInput.style.display = 'none';
 
-                const select = document.createElement('select');
-                Object.assign(select.style, {
-                    width: '100%', padding: '12px 16px', borderRadius: '40px',
-                    background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.12)',
-                    color: '#f8fafc', fontSize: '1rem', outline: 'none'
+                const dropZone = document.createElement('div');
+                Object.assign(dropZone.style, {
+                    border: '2px dashed rgba(45,212,191,0.3)',
+                    borderRadius: '16px',
+                    padding: '24px 12px',
+                    textAlign: 'center',
+                    cursor: 'pointer',
+                    transition: '0.2s',
+                    background: 'rgba(0,0,0,0.2)',
+                    marginBottom: '8px'
                 });
-                const defaultOption = document.createElement('option');
-                defaultOption.value = '';
-                defaultOption.textContent = '-- Select a language --';
-                select.appendChild(defaultOption);
-                languages.forEach(lang => {
-                    const opt = document.createElement('option');
-                    opt.value = lang;
-                    opt.textContent = lang;
-                    select.appendChild(opt);
+                dropZone.innerHTML = `
+                    <div style="font-size: 2rem; margin-bottom: 0;">📄</div>
+                    <div style="font-weight: 600; color: #cbd5e1; font-size: 0.9rem;">Drag & drop file or click to browse</div>
+                    <div style="font-size: 0.75rem; color: #94a3b8; margin-top: 4px;">PDF, DOCX, TXT, EPUB – first 20 pages will be used</div>
+                `;
+
+                dropZone.addEventListener('click', () => fileInput.click());
+                dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.style.borderColor = '#2dd4bf'; dropZone.style.background = 'rgba(45,212,191,0.05)'; });
+                dropZone.addEventListener('dragleave', () => { dropZone.style.borderColor = 'rgba(45,212,191,0.3)'; dropZone.style.background = 'rgba(0,0,0,0.2)'; });
+                dropZone.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    dropZone.style.borderColor = 'rgba(45,212,191,0.3)';
+                    dropZone.style.background = 'rgba(0,0,0,0.2)';
+                    const files = e.dataTransfer.files;
+                    if (files.length > 0) handleFile(files[0], dropZone);
+                });
+                fileInput.addEventListener('change', (e) => {
+                    if (e.target.files.length > 0) handleFile(e.target.files[0], dropZone);
                 });
 
-                const manualInput = document.createElement('input');
-                manualInput.type = 'text';
-                manualInput.placeholder = 'Or type your language...';
-                Object.assign(manualInput.style, {
-                    width: '100%', padding: '12px 16px', borderRadius: '40px',
-                    background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.12)',
-                    color: '#f8fafc', fontSize: '1rem', outline: 'none', marginTop: '4px'
-                });
-
-                function updateLanguage() {
-                    const selectVal = select.value.trim();
-                    const manualVal = manualInput.value.trim();
-                    onboardingLanguage = selectVal || manualVal || 'English';
+                // Paste text area as alternative
+                const pasteArea = document.createElement('textarea');
+                pasteArea.placeholder = 'Or paste the text directly here...';
+                pasteArea.style.cssText = `
+                    width: 100%; padding: 10px 12px; border-radius: 12px; background: rgba(0,0,0,0.4);
+                    border: 1px solid rgba(255,255,255,0.12); color: #f8fafc; font-family: monospace;
+                    font-size: 0.85rem; resize: vertical; min-height: 80px;
+                `;
+                pasteArea.addEventListener('input', () => {
+                    const val = pasteArea.value.trim();
                     const btn = document.getElementById('onboarding-next-btn');
-                    if (onboardingLanguage.length >= 2) {
+                    if (val.length > 20) {
+                        window._onboardingExtractedText = val;
                         btn.style.opacity = '1'; btn.style.pointerEvents = 'auto'; btn.dataset.ready = 'true';
                     } else {
+                        window._onboardingExtractedText = '';
+                        btn.style.opacity = '0.5'; btn.style.pointerEvents = 'none'; btn.dataset.ready = 'false';
+                    }
+                });
+
+                wrapper.appendChild(dropZone);
+                wrapper.appendChild(fileInput);
+                wrapper.appendChild(pasteArea);
+                container.appendChild(wrapper);
+
+                async function handleFile(file, zone) {
+                    try {
+                        zone.innerHTML = '<div style="font-size: 2rem;">⏳</div><div>Extracting...</div>';
+                        const extracted = await extractTextFromFile(file, 20);
+                        const btn = document.getElementById('onboarding-next-btn');
+                        if (!extracted || extracted.length < 20) {
+                            zone.innerHTML = '<div style="font-size: 2rem;">❌</div><div>No text found</div>';
+                            window._onboardingExtractedText = '';
+                            btn.style.opacity = '0.5'; btn.style.pointerEvents = 'none'; btn.dataset.ready = 'false';
+                            return;
+                        }
+                        window._onboardingExtractedText = extracted;
+                        const preview = extracted.substring(0, 80) + '...';
+                        zone.innerHTML = `
+                            <div style="font-size: 2rem;">✅</div>
+                            <div style="color: #4ade80;">Extracted ${extracted.length} characters</div>
+                            <div style="font-size: 0.7rem; color: #94a3b8;">First 80: "${preview.replace(/"/g, '&quot;')}"</div>
+                        `;
+                        btn.style.opacity = '1'; btn.style.pointerEvents = 'auto'; btn.dataset.ready = 'true';
+                    } catch (err) {
+                        zone.innerHTML = `<div style="font-size: 2rem;">❌</div><div>Error: ${err.message}</div>`;
+                        window._onboardingExtractedText = '';
+                        const btn = document.getElementById('onboarding-next-btn');
                         btn.style.opacity = '0.5'; btn.style.pointerEvents = 'none'; btn.dataset.ready = 'false';
                     }
                 }
-
-                select.addEventListener('change', updateLanguage);
-                manualInput.addEventListener('input', updateLanguage);
-
-                wrapper.appendChild(select);
-                wrapper.appendChild(manualInput);
-                container.appendChild(wrapper);
-                setTimeout(() => select.focus(), 100);
             }
         },
-        // ---- YOUR EXISTING STEP 2 (now step 3) ----
-3: {
-    title: '📄 Do you have your study material ready?',
-    description: 'You’ll need a note or document containing the content you want to learn.',
-    render: (container) => {
-        const wrapper = document.createElement('div');
-        wrapper.style.cssText = 'display: flex; flex-direction: column; gap: 12px; margin-top: 8px;';
-
-        // ---- CHECKBOX ----
-        const checkboxLabel = document.createElement('label');
-        checkboxLabel.style.cssText = 'display: flex; align-items: center; gap: 10px; font-size: 0.95rem; cursor: pointer;';
-        const checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.id = 'onboarding-material-ready';
-        checkbox.style.cssText = 'width: 20px; height: 20px; accent-color: #2dd4bf; cursor: pointer;';
-        const span = document.createElement('span');
-        span.textContent = 'I have my study material ready.';
-        checkboxLabel.appendChild(checkbox);
-        checkboxLabel.appendChild(span);
-        wrapper.appendChild(checkboxLabel);
-
-        // ---- NEXT BUTTON (enabled by checkbox) ----
-        const nextBtn = document.getElementById('onboarding-next-btn');
-        // Initially disabled
-        nextBtn.style.opacity = '0.5';
-        nextBtn.style.pointerEvents = 'none';
-        nextBtn.dataset.ready = 'false';
-
-        checkbox.addEventListener('change', () => {
-            if (checkbox.checked) {
-                nextBtn.style.opacity = '1';
-                nextBtn.style.pointerEvents = 'auto';
-                nextBtn.dataset.ready = 'true';
-            } else {
-                nextBtn.style.opacity = '0.5';
-                nextBtn.style.pointerEvents = 'none';
-                nextBtn.dataset.ready = 'false';
-            }
-        });
-
-        container.appendChild(wrapper);
-    }
-},
-        // ---- YOUR EXISTING STEP 3 (now step 4) ----
-        4: {
-            title: '📋 Get your categories file',
-            description: 'Click the button below to copy a <strong>special prompt</strong>. Then go to your favorite AI website (ChatGPT, Claude, DeepSeek, etc.), paste the prompt, and upload your study notes. The AI will give you a JSON file.',
+        3: {
+            title: '📋 Copy your AI prompt',
+            description: 'This prompt now includes your extracted text. Copy it, paste into an AI, and it will generate the categories JSON for you.',
+            info: 'The AI will output a JSON file with your categories. You don\'t need to attach the full book—just this prompt and the extracted text will suffice.',
             render: (container) => {
+                const prompt = getCategoriesPrompt();
                 const btnWrapper = document.createElement('div');
                 btnWrapper.style.cssText = 'display: flex; flex-direction: column; gap: 12px; margin-top: 8px;';
 
@@ -12986,7 +13080,6 @@ function getStepData(step) {
                     fontSize: '1rem', cursor: 'pointer', width: '100%'
                 });
                 copyBtn.addEventListener('click', async () => {
-                    const prompt = getCategoriesPrompt();
                     try {
                         await navigator.clipboard.writeText(prompt);
                         copyBtn.innerHTML = '✅ Copied! Good job!';
@@ -13003,7 +13096,7 @@ function getStepData(step) {
                         explain.innerHTML = `
                             <strong>📌 What to do next:</strong><br>
                             1. Go to <strong>ChatGPT, Claude, DeepSeek, or any AI</strong>.<br>
-                            2. Paste the prompt and upload your study notes.<br>
+                            2. Paste the prompt (it already includes your extracted text).<br>
                             3. The AI will give you a <strong>JSON file</strong> with your categories.<br>
                             4. Save that file to your computer.<br><br>
                             <em style="color:#94a3b8;">When you have the file, click "Next" below.</em>
@@ -13040,307 +13133,246 @@ function getStepData(step) {
                     marginTop: '8px', maxHeight: '180px', overflowY: 'auto',
                     padding: '8px', background: 'rgba(0,0,0,0.3)', borderRadius: '8px'
                 });
-                pre.textContent = getCategoriesPrompt();
+                pre.textContent = prompt;
                 promptPreview.appendChild(pre);
                 btnWrapper.appendChild(promptPreview);
                 container.appendChild(btnWrapper);
             }
         },
-        // ---- YOUR EXISTING STEP 4 (now step 5) ----
-5: {
-    title: '📁 Do you have the JSON file ready?',
-    description: 'Have you pasted the AI prompt and received your <strong>categories JSON file</strong>?',
-    render: (container) => {
-        const wrapper = document.createElement('div');
-        wrapper.style.cssText = 'display: flex; flex-direction: column; gap: 12px; margin-top: 8px;';
+        4: {
+            title: '📤 Upload your categories file',
+            description: 'Now paste or upload the <strong>JSON file</strong> that the AI generated for you.<br><br>This will build your knowledge map — the <strong>brain</strong>.',
+            info: 'This should be the JSON file you saved from the AI response. It contains your category hierarchy.',
+            render: (container) => {
+                const zone = document.createElement('div');
+                Object.assign(zone.style, {
+                    border: '2px dashed rgba(45,212,191,0.3)',
+                    borderRadius: '16px',
+                    padding: '16px 12px',
+                    textAlign: 'center',
+                    cursor: 'pointer',
+                    transition: '0.2s',
+                    background: 'rgba(0,0,0,0.2)',
+                    marginBottom: '8px'
+                });
+                zone.innerHTML = `
+                    <div style="font-size: 2rem; margin-bottom: 0;">📄</div>
+                    <div style="font-weight: 600; color: #cbd5e1; font-size: 0.9rem;">Drag & drop JSON or click to browse</div>
+                `;
 
-        // ---- CHECKBOX ----
-        const checkboxLabel = document.createElement('label');
-        checkboxLabel.style.cssText = 'display: flex; align-items: center; gap: 10px; font-size: 0.95rem; cursor: pointer;';
-        const checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.id = 'onboarding-file-ready';
-        checkbox.style.cssText = 'width: 20px; height: 20px; accent-color: #2dd4bf; cursor: pointer;';
-        const span = document.createElement('span');
-        span.textContent = 'I have the categories JSON file ready.';
-        checkboxLabel.appendChild(checkbox);
-        checkboxLabel.appendChild(span);
-        wrapper.appendChild(checkboxLabel);
+                const fileInput = document.createElement('input');
+                fileInput.type = 'file'; fileInput.accept = '.json'; fileInput.style.display = 'none';
+                zone.addEventListener('click', () => fileInput.click());
+                zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.style.borderColor = '#2dd4bf'; zone.style.background = 'rgba(45,212,191,0.05)'; });
+                zone.addEventListener('dragleave', () => { zone.style.borderColor = 'rgba(45,212,191,0.3)'; zone.style.background = 'rgba(0,0,0,0.2)'; });
+                zone.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    zone.style.borderColor = 'rgba(45,212,191,0.3)'; zone.style.background = 'rgba(0,0,0,0.2)';
+                    const files = e.dataTransfer.files;
+                    if (files.length > 0) handleOnboardingFile(files[0], zone);
+                });
+                fileInput.addEventListener('change', (e) => {
+                    if (e.target.files.length > 0) handleOnboardingFile(e.target.files[0], zone);
+                });
+                container.appendChild(zone);
+                container.appendChild(fileInput);
 
-        // ---- NEXT BUTTON (enabled by checkbox) ----
-        const nextBtn = document.getElementById('onboarding-next-btn');
-        // Initially disabled
-        nextBtn.style.opacity = '0.5';
-        nextBtn.style.pointerEvents = 'none';
-        nextBtn.dataset.ready = 'false';
+                const pasteRow = document.createElement('div');
+                pasteRow.style.cssText = 'display: flex; gap: 8px; align-items: stretch; margin-top: 4px;';
 
-        checkbox.addEventListener('change', () => {
-            if (checkbox.checked) {
-                nextBtn.style.opacity = '1';
-                nextBtn.style.pointerEvents = 'auto';
-                nextBtn.dataset.ready = 'true';
-            } else {
-                nextBtn.style.opacity = '0.5';
-                nextBtn.style.pointerEvents = 'none';
-                nextBtn.dataset.ready = 'false';
-            }
-        });
-
-        // ---- BACK BUTTON ----
-        const noBtn = document.createElement('button');
-        noBtn.className = 'btn-secondary';
-        noBtn.textContent = '← Not yet, take me back';
-        Object.assign(noBtn.style, {
-            background: 'rgba(255,255,255,0.06) !important',
-            border: '1px solid rgba(255,255,255,0.1) !important',
-            color: '#94a3b8 !important', padding: '10px 20px',
-            borderRadius: '40px', cursor: 'pointer', fontSize: '0.85rem'
-        });
-        noBtn.addEventListener('click', () => { onboardingStep = 3; renderStep(3); });
-        wrapper.appendChild(noBtn);
-
-        container.appendChild(wrapper);
-    }
-},
-        // ---- YOUR EXISTING STEP 5 (now step 6) ----
-6: {
-    title: '📤 Upload your categories file',
-    description: 'Now paste or upload the <strong>JSON file</strong> that the AI generated for you.<br><br>This will build your knowledge map — the <strong>brain</strong>.',
-    render: (container) => {
-        // ---- COMPACT DROP ZONE ----
-        const zone = document.createElement('div');
-        Object.assign(zone.style, {
-            border: '2px dashed rgba(45,212,191,0.3)',
-            borderRadius: '16px',
-            padding: '16px 12px',
-            textAlign: 'center',
-            cursor: 'pointer',
-            transition: '0.2s',
-            background: 'rgba(0,0,0,0.2)',
-            marginBottom: '8px'
-        });
-        zone.innerHTML = `
-            <div style="font-size: 2rem; margin-bottom: 0;">📄</div>
-            <div style="font-weight: 600; color: #cbd5e1; font-size: 0.9rem;">Drag & drop JSON or click to browse</div>
-        `;
-
-        const fileInput = document.createElement('input');
-        fileInput.type = 'file'; fileInput.accept = '.json'; fileInput.style.display = 'none';
-        zone.addEventListener('click', () => fileInput.click());
-        zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.style.borderColor = '#2dd4bf'; zone.style.background = 'rgba(45,212,191,0.05)'; });
-        zone.addEventListener('dragleave', () => { zone.style.borderColor = 'rgba(45,212,191,0.3)'; zone.style.background = 'rgba(0,0,0,0.2)'; });
-        zone.addEventListener('drop', (e) => {
-            e.preventDefault();
-            zone.style.borderColor = 'rgba(45,212,191,0.3)'; zone.style.background = 'rgba(0,0,0,0.2)';
-            const files = e.dataTransfer.files;
-            if (files.length > 0) handleOnboardingFile(files[0], zone);
-        });
-        fileInput.addEventListener('change', (e) => {
-            if (e.target.files.length > 0) handleOnboardingFile(e.target.files[0], zone);
-        });
-        container.appendChild(zone);
-        container.appendChild(fileInput);
-
-        // ---- PASTE ROW (textarea + build button side‑by‑side) ----
-        const pasteRow = document.createElement('div');
-        pasteRow.style.cssText = 'display: flex; gap: 8px; align-items: stretch; margin-top: 4px;';
-
-        const pasteInput = document.createElement('textarea');
-        pasteInput.placeholder = 'Paste JSON text here...';
-        pasteInput.style.cssText = `
-            flex: 1;
-            padding: 10px 12px;
-            border-radius: 12px;
-            background: rgba(0,0,0,0.4);
-            border: 2px solid rgba(255,255,255,0.8);
-            box-shadow: inset 0 0 0 1px rgba(0,0,0,0.8);
-            color: #f8fafc;
-            font-family: monospace;
-            font-size: 0.8rem;
-            resize: vertical;
-            min-height: 44px;
-            outline: none;
-        `;
-        pasteInput.addEventListener('input', () => {
-            const val = pasteInput.value.trim();
-            if (val) {
-                try {
-                    const parsed = JSON.parse(val);
-                    const items = parsed.items || (parsed.type === 'categories' ? parsed.items : null);
-                    if (items && Array.isArray(items) && items.length > 0) {
-                        pasteInput.style.borderColor = '#4ade80';
-                        pasteInput.dataset.json = val;
-                        buildBtn.style.opacity = '1'; buildBtn.style.pointerEvents = 'auto';
+                const pasteInput = document.createElement('textarea');
+                pasteInput.placeholder = 'Paste JSON text here...';
+                pasteInput.style.cssText = `
+                    flex: 1;
+                    padding: 10px 12px;
+                    border-radius: 12px;
+                    background: rgba(0,0,0,0.4);
+                    border: 2px solid rgba(255,255,255,0.8);
+                    box-shadow: inset 0 0 0 1px rgba(0,0,0,0.8);
+                    color: #f8fafc;
+                    font-family: monospace;
+                    font-size: 0.8rem;
+                    resize: vertical;
+                    min-height: 44px;
+                    outline: none;
+                `;
+                pasteInput.addEventListener('input', () => {
+                    const val = pasteInput.value.trim();
+                    if (val) {
+                        try {
+                            const parsed = JSON.parse(val);
+                            const items = parsed.items || (parsed.type === 'categories' ? parsed.items : null);
+                            if (items && Array.isArray(items) && items.length > 0) {
+                                pasteInput.style.borderColor = '#4ade80';
+                                pasteInput.dataset.json = val;
+                                buildBtn.style.opacity = '1'; buildBtn.style.pointerEvents = 'auto';
+                            } else {
+                                pasteInput.style.borderColor = '#f43f5e';
+                                buildBtn.style.opacity = '0.5'; buildBtn.style.pointerEvents = 'none';
+                            }
+                        } catch (e) {
+                            pasteInput.style.borderColor = '#f43f5e';
+                            buildBtn.style.opacity = '0.5'; buildBtn.style.pointerEvents = 'none';
+                        }
                     } else {
-                        pasteInput.style.borderColor = '#f43f5e';
+                        pasteInput.style.borderColor = 'rgba(255,255,255,0.8)';
                         buildBtn.style.opacity = '0.5'; buildBtn.style.pointerEvents = 'none';
                     }
-                } catch (e) {
-                    pasteInput.style.borderColor = '#f43f5e';
-                    buildBtn.style.opacity = '0.5'; buildBtn.style.pointerEvents = 'none';
-                }
-            } else {
-                pasteInput.style.borderColor = 'rgba(255,255,255,0.8)';
-                buildBtn.style.opacity = '0.5'; buildBtn.style.pointerEvents = 'none';
-            }
-        });
-        pasteInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && buildBtn.style.pointerEvents !== 'none') {
-                buildBtn.click();
-            }
-        });
+                });
+                pasteInput.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter' && buildBtn.style.pointerEvents !== 'none') {
+                        buildBtn.click();
+                    }
+                });
 
-        const buildBtn = document.createElement('button');
-        buildBtn.className = 'btn-primary';
-        buildBtn.id = 'onboarding-build-btn';
-        const subject = onboardingSubject || 'Brain';
-        buildBtn.textContent = `🧠 Build`;
-        Object.assign(buildBtn.style, {
-            background: 'rgba(45,212,191,0.15) !important',
-            borderColor: '#2dd4bf !important',
-            color: '#2dd4bf !important',
-            padding: '0 20px',
-            borderRadius: '40px',
-            fontWeight: '700',
-            fontSize: '0.95rem',
-            cursor: 'pointer',
-            opacity: '0.5',
-            pointerEvents: 'none',
-            transition: '0.2s',
-            whiteSpace: 'nowrap',
-            height: '44px'
-        });
-        buildBtn.addEventListener('click', async () => {
-            buildBtn.textContent = '⏳';
-            buildBtn.style.opacity = '0.7'; buildBtn.style.pointerEvents = 'none';
-
-            const zoneData = zone.dataset.jsonData;
-            const pasteData = pasteInput.dataset.json;
-            let jsonData = zoneData || pasteData;
-            if (!jsonData) {
-                UI.toast('⚠️ Please upload or paste your categories JSON first.');
+                const buildBtn = document.createElement('button');
+                buildBtn.className = 'btn-primary';
+                buildBtn.id = 'onboarding-build-btn';
+                const subject = onboardingSubject || 'Brain';
                 buildBtn.textContent = `🧠 Build`;
-                buildBtn.style.opacity = '0.5'; buildBtn.style.pointerEvents = 'none';
-                return;
-            }
+                Object.assign(buildBtn.style, {
+                    background: 'rgba(45,212,191,0.15) !important',
+                    borderColor: '#2dd4bf !important',
+                    color: '#2dd4bf !important',
+                    padding: '0 20px',
+                    borderRadius: '40px',
+                    fontWeight: '700',
+                    fontSize: '0.95rem',
+                    cursor: 'pointer',
+                    opacity: '0.5',
+                    pointerEvents: 'none',
+                    transition: '0.2s',
+                    whiteSpace: 'nowrap',
+                    height: '44px'
+                });
+                buildBtn.addEventListener('click', async () => {
+                    buildBtn.textContent = '⏳';
+                    buildBtn.style.opacity = '0.7'; buildBtn.style.pointerEvents = 'none';
 
-            const success = await processOnboardingCategories(jsonData);
-            if (!success) {
-                UI.toast('❌ Build failed. Check console for errors.');
-                buildBtn.textContent = `🧠 Build`;
-                buildBtn.style.opacity = '1'; buildBtn.style.pointerEvents = 'auto';
-                return;
-            }
+                    const zoneData = zone.dataset.jsonData;
+                    const pasteData = pasteInput.dataset.json;
+                    let jsonData = zoneData || pasteData;
+                    if (!jsonData) {
+                        UI.toast('⚠️ Please upload or paste your categories JSON first.');
+                        buildBtn.textContent = `🧠 Build`;
+                        buildBtn.style.opacity = '0.5'; buildBtn.style.pointerEvents = 'none';
+                        return;
+                    }
 
-            onboardingStep = 7;
-            renderStep(7);
-        });
+                    const success = await processOnboardingCategories(jsonData);
+                    if (!success) {
+                        UI.toast('❌ Build failed. Check console for errors.');
+                        buildBtn.textContent = `🧠 Build`;
+                        buildBtn.style.opacity = '1'; buildBtn.style.pointerEvents = 'auto';
+                        return;
+                    }
 
-        pasteRow.appendChild(pasteInput);
-        pasteRow.appendChild(buildBtn);
-        container.appendChild(pasteRow);
+                    onboardingStep = 5;
+                    renderStep(5);
+                });
 
-        // ---- SUBTLE HELP LINK ----
-        const helpLink = document.createElement('a');
-        helpLink.href = '#';
-        helpLink.textContent = '❓ Need help?';
-        Object.assign(helpLink.style, {
-            display: 'inline-block',
-            marginTop: '6px',
-            fontSize: '0.75rem',
-            color: '#94a3b8',
-            textDecoration: 'none',
-            borderBottom: '1px dotted rgba(255,255,255,0.2)',
-            cursor: 'pointer',
-            transition: '0.2s'
-        });
-        helpLink.addEventListener('mouseenter', () => {
-            helpLink.style.color = '#2dd4bf';
-            helpLink.style.borderBottomColor = '#2dd4bf';
-        });
-        helpLink.addEventListener('mouseleave', () => {
-            helpLink.style.color = '#94a3b8';
-            helpLink.style.borderBottomColor = 'rgba(255,255,255,0.2)';
-        });
-        helpLink.addEventListener('click', (e) => {
-            e.preventDefault();
-            onboardingStep = 5;
-            renderStep(5);
-        });
-        container.appendChild(helpLink);
+                pasteRow.appendChild(pasteInput);
+                pasteRow.appendChild(buildBtn);
+                container.appendChild(pasteRow);
 
-        const activateBuild = () => { buildBtn.style.opacity = '1'; buildBtn.style.pointerEvents = 'auto'; };
+                const helpLink = document.createElement('a');
+                helpLink.href = '#';
+                helpLink.textContent = '❓ Need help?';
+                Object.assign(helpLink.style, {
+                    display: 'inline-block',
+                    marginTop: '6px',
+                    fontSize: '0.75rem',
+                    color: '#94a3b8',
+                    textDecoration: 'none',
+                    borderBottom: '1px dotted rgba(255,255,255,0.2)',
+                    cursor: 'pointer',
+                    transition: '0.2s'
+                });
+                helpLink.addEventListener('mouseenter', () => {
+                    helpLink.style.color = '#2dd4bf';
+                    helpLink.style.borderBottomColor = '#2dd4bf';
+                });
+                helpLink.addEventListener('mouseleave', () => {
+                    helpLink.style.color = '#94a3b8';
+                    helpLink.style.borderBottomColor = 'rgba(255,255,255,0.2)';
+                });
+                helpLink.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    onboardingStep = 3; // go back to copy prompt step
+                    renderStep(3);
+                });
+                container.appendChild(helpLink);
 
-        async function handleOnboardingFile(file, zoneEl) {
-            try {
-                const text = await file.text();
-                const data = JSON.parse(text);
-                if (!data.items && !data.type) {
-                    zoneEl.style.borderColor = '#f43f5e';
-                    zoneEl.innerHTML = `<div style="font-size: 2rem; margin-bottom: 0;">❌</div><div style="font-weight: 600; color: #f43f5e; font-size: 0.9rem;">Invalid file</div>`;
-                    return;
+                const activateBuild = () => { buildBtn.style.opacity = '1'; buildBtn.style.pointerEvents = 'auto'; };
+
+                async function handleOnboardingFile(file, zoneEl) {
+                    try {
+                        const text = await file.text();
+                        const data = JSON.parse(text);
+                        if (!data.items && !data.type) {
+                            zoneEl.style.borderColor = '#f43f5e';
+                            zoneEl.innerHTML = `<div style="font-size: 2rem; margin-bottom: 0;">❌</div><div style="font-weight: 600; color: #f43f5e; font-size: 0.9rem;">Invalid file</div>`;
+                            return;
+                        }
+                        zoneEl.style.borderColor = '#4ade80'; zoneEl.style.background = 'rgba(74,222,128,0.05)';
+                        zoneEl.innerHTML = `<div style="font-size: 2rem; margin-bottom: 0;">✅</div><div style="font-weight: 600; color: #4ade80; font-size: 0.9rem;">File loaded!</div>`;
+                        zoneEl.dataset.jsonData = JSON.stringify(data);
+                        activateBuild();
+                    } catch (err) {
+                        zoneEl.style.borderColor = '#f43f5e';
+                        zoneEl.innerHTML = `<div style="font-size: 2rem; margin-bottom: 0;">❌</div><div style="font-weight: 600; color: #f43f5e; font-size: 0.9rem;">Error: ${err.message}</div>`;
+                    }
                 }
-                zoneEl.style.borderColor = '#4ade80'; zoneEl.style.background = 'rgba(74,222,128,0.05)';
-                zoneEl.innerHTML = `<div style="font-size: 2rem; margin-bottom: 0;">✅</div><div style="font-weight: 600; color: #4ade80; font-size: 0.9rem;">File loaded!</div>`;
-                zoneEl.dataset.jsonData = JSON.stringify(data);
-                activateBuild();
-            } catch (err) {
-                zoneEl.style.borderColor = '#f43f5e';
-                zoneEl.innerHTML = `<div style="font-size: 2rem; margin-bottom: 0;">❌</div><div style="font-weight: 600; color: #f43f5e; font-size: 0.9rem;">Error: ${err.message}</div>`;
+            }
+        },
+        5: {
+            title: '🧠 Your brain is ready!',
+            description: '',
+            render: (container) => {
+                const msg = document.createElement('div');
+                msg.style.cssText = 'text-align: center; padding: 8px 0;';
+                const brainIcon = document.createElement('div');
+                brainIcon.style.cssText = 'font-size: 4rem; margin-bottom: 8px;';
+                brainIcon.textContent = '🧠';
+                msg.appendChild(brainIcon);
+
+                const typewriterContainer = document.createElement('div');
+                typewriterContainer.id = 'onboarding-typewriter';
+                Object.assign(typewriterContainer.style, {
+                    fontFamily: "'Fira Code', monospace", fontSize: '1.1rem',
+                    lineHeight: '1.8', color: '#e2e8f0', minHeight: '80px',
+                    padding: '12px 16px', background: 'rgba(0,0,0,0.3)',
+                    borderRadius: '16px', borderLeft: '3px solid #2dd4bf',
+                    textAlign: 'left', margin: '8px 0', whiteSpace: 'pre-wrap'
+                });
+                msg.appendChild(typewriterContainer);
+
+                const subject = onboardingSubject || 'knowledge';
+                const typeText = `Your ${subject} knowledge is now a living structure.\nClick the ☰ menu to see the connections you never knew you had.`;
+
+                container.appendChild(msg);
+
+                setTimeout(() => {
+                    typewriterEffect(typewriterContainer, typeText, 25, () => {
+                        setTimeout(() => {
+                            const nextBtn = document.getElementById('onboarding-next-btn');
+                            nextBtn.style.opacity = '1';
+                            nextBtn.style.pointerEvents = 'auto';
+                            nextBtn.dataset.ready = 'true';
+                            nextBtn.textContent = '🚀 Explore';
+                            nextBtn.style.animation = 'pulseGlow 1.5s ease-in-out infinite';
+                            nextBtn.style.boxShadow = '0 0 20px rgba(45,212,191,0.6)';
+                        }, 400);
+                    });
+                }, 300);
             }
         }
-    }
-},
-        // ---- YOUR EXISTING STEP 6 (now step 7) ----
-7: {
-    title: '🧠 Your brain is ready!',
-    description: '',
-    render: (container) => {
-        const msg = document.createElement('div');
-        msg.style.cssText = 'text-align: center; padding: 8px 0;';
-        const brainIcon = document.createElement('div');
-        brainIcon.style.cssText = 'font-size: 4rem; margin-bottom: 8px;';
-        brainIcon.textContent = '🧠';
-        msg.appendChild(brainIcon);
-
-        const typewriterContainer = document.createElement('div');
-        typewriterContainer.id = 'onboarding-typewriter';
-        Object.assign(typewriterContainer.style, {
-            fontFamily: "'Fira Code', monospace", fontSize: '1.1rem',
-            lineHeight: '1.8', color: '#e2e8f0', minHeight: '80px',
-            padding: '12px 16px', background: 'rgba(0,0,0,0.3)',
-            borderRadius: '16px', borderLeft: '3px solid #2dd4bf',
-            textAlign: 'left', margin: '8px 0', whiteSpace: 'pre-wrap'
-        });
-        msg.appendChild(typewriterContainer);
-
-        const subject = onboardingSubject || 'knowledge';
-        // Peter Gregory's final, concise, no‑fluff hook
-        const typeText = `Your ${subject} knowledge is now a living structure.\nClick the ☰ menu to see the connections you never knew you had.`;
-
-        container.appendChild(msg);
-
-        setTimeout(() => {
-            typewriterEffect(typewriterContainer, typeText, 25, () => {
-                setTimeout(() => {
-                    const nextBtn = document.getElementById('onboarding-next-btn');
-                    nextBtn.style.opacity = '1';
-                    nextBtn.style.pointerEvents = 'auto';
-                    nextBtn.dataset.ready = 'true';
-                    nextBtn.textContent = '🚀 Explore';
-                    nextBtn.style.animation = 'pulseGlow 1.5s ease-in-out infinite';
-                    nextBtn.style.boxShadow = '0 0 20px rgba(45,212,191,0.6)';
-                }, 400);
-            });
-        }, 300);
-    }
-}
     };
     return steps[step];
 }
 function getCategoriesPrompt() {
     const subject = onboardingSubject || 'your subject';
-    const language = onboardingLanguage || 'English';
+    const extractedContent = window._onboardingExtractedText || '';
     return `Act as an expert in hierarchical categorization. Based on the study material I will provide, extract the complete hierarchical structure of topics.
 
 For each topic, include a very short (few words) contextual summary in brackets after the name, explaining what that topic covers.
@@ -13354,11 +13386,17 @@ Output valid JSON inside a markdown code block \`\`\`json according to this sche
 }
 
 The study material is about: ${subject}
-The content and summaries must be in ${language}.
+The content and summaries must be in English.
+
+Here is the extracted text from the study material (may be truncated):
+
+---
+${extractedContent.substring(0, 5000)}
+---
 
 Now, analyze the following content and generate the categories JSON:`;
 }
-        // --- ROBUST CATEGORY PROCESSING (Fixed `await` & Redundancy) ---
+       // --- ROBUST CATEGORY PROCESSING (Fixed `await` & Redundancy) ---
 async function processOnboardingCategories(jsonText) {
     try {
         console.log('[Onboarding] Processing JSON...');
@@ -13419,7 +13457,7 @@ async function processOnboardingCategories(jsonText) {
             console.log('[Onboarding] Next clicked. Step=', onboardingStep, 'Ready=', nextBtn.dataset.ready);
             if (nextBtn.dataset.ready !== 'true') return;
 
-if (onboardingStep === 7) {
+if (onboardingStep === 5) {
     localStorage.setItem(ONBOARDING_KEY, 'true');
     localStorage.setItem(SUBJECT_KEY, onboardingSubject);
     modal.remove();
