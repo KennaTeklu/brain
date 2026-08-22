@@ -12123,7 +12123,9 @@ function validateHTML(html) {
         return val ? parseInt(val, 10) : null;
     }
     function startTrial() {
-        localStorage.setItem(TRIAL_KEY, Date.now().toString());
+        if (!getTrialStart()) {
+            localStorage.setItem(TRIAL_KEY, Date.now().toString());
+        }
     }
     function isTrialActive() {
         const start = getTrialStart();
@@ -12142,7 +12144,9 @@ function validateHTML(html) {
     window.__paywall = {
         isAllowed: async function() {
             const status = await checkStatus();
-            return status.active || isTrialActive();
+            if (status.active) return true;
+            if (!getTrialStart()) return true;   // hasn't built a brain yet — don't block
+            return isTrialActive();
         },
         getStatus: checkStatus,
         showFullPage: function() {
