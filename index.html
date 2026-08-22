@@ -8748,17 +8748,6 @@ function updateDockAddButton() {
     }
 }
 
-document.getElementById('dock-add').addEventListener('click', function() {
-    // Don't show upload modal – just restart onboarding
-    if (typeof runOnboarding === 'function') {
-        runOnboarding();
-    } else {
-        // Fallback: if onboarding not loaded, reload to trigger it
-        localStorage.removeItem('onboarding_complete_v2');
-        location.reload();
-    }
-});
-
 // Call after every node change
 const originalSave = DB.save;
 DB.save = async function(recordHistory = true) {
@@ -12145,7 +12134,19 @@ function validateHTML(html) {
         isAllowed: async function() {
             const status = await checkStatus();
             if (status.active) return true;
-            if (!getTrialStart()) return true;   // hasn't built a brain yet — don't block
+
+            // If the user has built a brain (content exists) but has no trial start,
+            // automatically start the trial now – this fixes users who never got a timer.
+            const hasContent = window.State && window.State.nodes.some(n => n.id !== 'root');
+            if (hasContent && !getTrialStart()) {
+                startTrial();
+                return true;   // trial just started, so allow
+            }
+
+            // No content yet – allow (onboarding will start trial later)
+            if (!getTrialStart()) return true;
+
+            // Otherwise, check if the trial is still active
             return isTrialActive();
         },
         getStatus: checkStatus,
@@ -13611,6 +13612,7 @@ window._onboardingEnterHandler = enterHandler; // optional, for cleanup
         }, 200);
     }
 
+    window.runOnboarding = runOnboarding;
     window.restartOnboarding = function() {
         localStorage.removeItem(ONBOARDING_KEY);
         location.reload();
@@ -13623,6 +13625,42 @@ window._onboardingEnterHandler = enterHandler; // optional, for cleanup
     }
 
 })();
+async function swapBrain() {
+    const nonRootCount = (State.nodes || []).filter(n => n.id !== 'root').length;
+
+    // Nothing to remove — just run onboarding normally
+    if (nonRootCount === 0) {
+        runOnboarding();
+        return;
+    }
+
+    const result = await Swal.fire({
+        title: 'Replace your brain?',
+        text: `This will permanently delete all ${nonRootCount} existing topics and let you build a new brain from scratch.`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#f43f5e',
+        cancelButtonColor: '#2dd4bf',
+        confirmButtonText: 'Yes, delete and start over',
+        cancelButtonText: 'Cancel',
+        background: 'rgba(15,18,28,0.95)',
+        backdrop: 'rgba(0,0,0,0.8)'
+    });
+    if (!result.isConfirmed) return;
+
+    // Wipe everything except root
+    State.nodes = State.nodes.filter(n => n.id === 'root');
+    State.focusId = 'root';
+    State.path = [];
+    await DB.save(false);
+    await Core.refresh();
+    Graph3D.fitToScreen(true);
+
+    // Force onboarding to run again regardless of onboarding-complete flag
+    localStorage.removeItem('onboarding_complete_v2');
+    runOnboarding();
+}
+window.swapBrain = swapBrain;
 </script>
 <script>
 // ----- Helper: count descendants -----
@@ -13709,11 +13747,13 @@ document.addEventListener('input', function(e) {
 
 // ----- Dock button click (restart onboarding) -----
 document.getElementById('dock-add').addEventListener('click', function() {
-    if (typeof runOnboarding === 'function') {
-        runOnboarding();
+    const nonRootCount = (State.nodes || []).filter(n => n.id !== 'root').length;
+    if (nonRootCount === 0) {
+        if (typeof runOnboarding === 'function') runOnboarding();
+        else { localStorage.removeItem('onboarding_complete_v2'); location.reload(); }
     } else {
-        localStorage.removeItem('onboarding_complete_v2');
-        location.reload();
+        if (typeof swapBrain === 'function') swapBrain();
+        else { localStorage.removeItem('onboarding_complete_v2'); location.reload(); }
     }
 });
 </script>
