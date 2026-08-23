@@ -3170,6 +3170,35 @@ button:hover,
 body.modal-open {
     overflow: hidden;
 }
+/* Onboarding modal responsive adjustments */
+#onboarding-wizard-modal {
+    padding: 20px;
+    overflow-y: auto;
+}
+
+#onboarding-wizard-modal .modal-medium {
+    max-width: 800px;
+    width: 95vw;
+    max-height: 90vh;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    padding: 24px;
+    border-radius: 24px;
+}
+
+/* Make the prompt box taller and scrollable */
+#onboarding-wizard-modal .prompt-box {
+    max-height: 320px;
+    overflow-y: auto;
+}
+
+/* Ensure step content doesn't get squeezed */
+#onboarding-wizard-modal .step-content {
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
+}
 </style>
 </head>
 <body>
