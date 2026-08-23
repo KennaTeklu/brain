@@ -5471,8 +5471,9 @@ const Graph3D = {
 
         // 2. Determine the root node
         let rootId = isSolar ? 'root' : State.focusId;
+        const savedRootName = localStorage.getItem('rootName') || 'Knowledge Universe';
         let rootNode = rootId === 'root' ?
-            { id: 'root', name: 'Knowledge Universe', type: 'root', size: 30000, understanding: Math.round(d3.mean(State.nodes.filter(n => n.parentIds.includes('root')), c => c.understanding)) || 0, parentIds: [] } :
+            { id: 'root', name: savedRootName, type: 'root', size: 30000, understanding: Math.round(d3.mean(State.nodes.filter(n => n.parentIds.includes('root')), c => c.understanding)) || 0, parentIds: [] } :
             State.nodes.find(n => n.id === rootId);
         if (!rootNode && rootId !== 'root') return Core.goHome();
 
@@ -8248,6 +8249,26 @@ window.addEventListener('load', async () => {
     }
     
     await DB.load();
+
+    // --- MIGRATION: Flatten single-child root & rename center ---
+    if (!localStorage.getItem('rootName')) {
+        const directChildren = State.nodes.filter(n => n.parentIds.includes('root'));
+        if (directChildren.length === 1) {
+            const child = directChildren[0];
+            // Grab the child's name to become the new root name
+            const newRootName = child.name;
+            // Move grandchildren up to root
+            State.nodes.filter(n => n.parentIds.includes(child.id)).forEach(grand => {
+                grand.parentIds = ['root'];
+            });
+            // Delete the child node
+            State.nodes = State.nodes.filter(n => n.id !== child.id);
+            // Save the new root name
+            localStorage.setItem('rootName', newRootName);
+            // Save DB changes
+            await DB.save(false);
+        }
+    }
     loadGlobalActivity();
 
     // --- MIGRATION: Flatten duplicate subject node & rename root ---
@@ -13622,27 +13643,20 @@ async function processOnboardingCategories(jsonText) {
         };
         for (let cat of items) addCategory(cat, 'root');
 
-        // --- RENAME ROOT & FLATTEN DUPLICATE SUBJECT NODE ---
-        const subjectName = onboardingSubject || 'Knowledge Universe';
-        const rootNode = State.nodes.find(n => n.id === 'root');
-        if (rootNode) {
-            const directChildren = State.nodes.filter(n => n.parentIds.includes('root'));
-            // If there is exactly one direct child that is a category with the same name as the subject,
-            // flatten it: move its children to root, then remove that child.
-            if (directChildren.length === 1) {
-                const child = directChildren[0];
-                if (child.name === subjectName || child.name.includes(subjectName)) {
-                    // Move grandchildren up to root
-                    State.nodes.filter(n => n.parentIds.includes(child.id)).forEach(grand => {
-                        grand.parentIds = ['root'];
-                    });
-                    // Remove the duplicate subject node
-                    State.nodes = State.nodes.filter(n => n.id !== child.id);
-                }
-            }
-            // Rename root to subject name
-            rootNode.name = subjectName;
+    // --- SET ROOT NAME & FLATTEN IF NEEDED ---
+    const subjectName = onboardingSubject || 'Knowledge Universe';
+    localStorage.setItem('rootName', subjectName);
+    // If the JSON still has a single subject node, flatten it (for backward compatibility)
+    const directChildren = State.nodes.filter(n => n.parentIds.includes('root'));
+    if (directChildren.length === 1) {
+        const child = directChildren[0];
+        if (child.name === subjectName || child.name.includes(subjectName)) {
+            State.nodes.filter(n => n.parentIds.includes(child.id)).forEach(grand => {
+                grand.parentIds = ['root'];
+            });
+            State.nodes = State.nodes.filter(n => n.id !== child.id);
         }
+    }
 
         MathCore.cascadeAll();
         await DB.save();
