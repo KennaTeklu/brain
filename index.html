@@ -13540,16 +13540,20 @@ RULES:
    - Do NOT rename them with generic textbook titles unless the document uses synonyms.
    - Recognize the document type (syllabus, module, chapter, etc.) and preserve its own terminology (e.g., "Module 1", "Week 3", "Unit II").
 
-2. DEEPEN ONLY WHERE IMPLIED OR SPARSE:
+2. CRITICAL: DO NOT CREATE A TOP-LEVEL NODE FOR THE SUBJECT.
+   - The subject name (e.g., "Systematic Theology I") is only context and must NOT appear as a node in the JSON.
+   - The "items" array should contain the main topics directly (e.g., "Scripture", "Theology Proper", "Creation", etc.) as the first level.
+
+3. DEEPEN ONLY WHERE IMPLIED OR SPARSE:
    - If a topic is named but not broken down, you may split it into its commonly understood sub-components (e.g., "Photosynthesis" → "Light Reactions" / "Dark Reactions").
    - Do NOT add entirely unrelated subtopics that the document does not hint at.
    - If the document is sparse (e.g., just bullet points), you may create logical subdivisions based on standard knowledge of the subject, as long as they are **directly related** to the parent topic and **essential** to understanding it. Avoid inventing niche or obscure sub-topics.
 
-3. DEPTH: Build 3 to 5 levels where the topic naturally branches. Avoid forcing a single-child node; it's acceptable to have one if the source clearly indicates it. Do NOT merge distinct topics just to reach a minimum child count.
+4. DEPTH: Build 3 to 5 levels where the topic naturally branches. Avoid forcing a single-child node; it's acceptable to have one if the source clearly indicates it. Do NOT merge distinct topics just to reach a minimum child count.
 
-4. SUMMARIES: For every node, include a short explanation in brackets after the name (e.g., "Mitochondria [energy powerhouse]").
+5. SUMMARIES: For every node, include a short explanation in brackets after the name (e.g., "Mitochondria [energy powerhouse]").
 
-5. OUTPUT: Provide ONLY the raw JSON. No markdown code fences, no explanations, no extra text. The JSON must follow this exact schema:
+6. OUTPUT: Provide ONLY the raw JSON. No markdown code fences, no explanations, no extra text. The JSON must follow this exact schema:
 {
   "type": "categories",
   "items": [
@@ -13595,7 +13599,29 @@ async function processOnboardingCategories(jsonText) {
                 for (let child of cat.children) addCategory(child, existing.id);
             }
         };
-        for (let cat of items) addCategory(cat, 'root');  // <-- parent is 'root', not BRAIN_NODE_ID
+        for (let cat of items) addCategory(cat, 'root');
+
+        // --- RENAME ROOT & FLATTEN DUPLICATE SUBJECT NODE ---
+        const subjectName = onboardingSubject || 'Knowledge Universe';
+        const rootNode = State.nodes.find(n => n.id === 'root');
+        if (rootNode) {
+            const directChildren = State.nodes.filter(n => n.parentIds.includes('root'));
+            // If there is exactly one direct child that is a category with the same name as the subject,
+            // flatten it: move its children to root, then remove that child.
+            if (directChildren.length === 1) {
+                const child = directChildren[0];
+                if (child.name === subjectName || child.name.includes(subjectName)) {
+                    // Move grandchildren up to root
+                    State.nodes.filter(n => n.parentIds.includes(child.id)).forEach(grand => {
+                        grand.parentIds = ['root'];
+                    });
+                    // Remove the duplicate subject node
+                    State.nodes = State.nodes.filter(n => n.id !== child.id);
+                }
+            }
+            // Rename root to subject name
+            rootNode.name = subjectName;
+        }
 
         MathCore.cascadeAll();
         await DB.save();
