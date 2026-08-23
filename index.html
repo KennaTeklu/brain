@@ -6003,12 +6003,6 @@ const Graph3D = {
                 // Drag finished: save fixed position
                 State.fixedPositions[nodeObj.id] = { fx: nodeObj.fx, fy: nodeObj.fy, fz: nodeObj.fz };
 	            await DB.save(false);
-	            // Clear any cached graph layout so the new structure gets a fresh distribution
-	            try {
-	                await dexieDB.graphCache.clear();
-	            } catch (e) {
-	                console.warn('Could not clear graph cache:', e);
-	            }
                 nodeObj.fx = nodeObj.x;
                 nodeObj.fy = nodeObj.y;
                 nodeObj.fz = nodeObj.z;
@@ -8273,30 +8267,17 @@ window.addEventListener('load', async () => {
             localStorage.setItem('rootName', newRootName);
             // Save DB changes
             await DB.save(false);
+            // Clear cached graph layout and reset view to root
+            try {
+                await dexieDB.graphCache.clear();
+            } catch (e) {
+                console.warn('Could not clear graph cache:', e);
+            }
+            State.focusId = 'root';
+            State.path = [];
         }
     }
     loadGlobalActivity();
-
-    // --- MIGRATION: Flatten duplicate subject node & rename root ---
-    const rootNode = State.nodes.find(n => n.id === 'root');
-    if (rootNode && rootNode.name === 'Knowledge Universe') {
-        const directChildren = State.nodes.filter(n => n.parentIds.includes('root'));
-        if (directChildren.length === 1) {
-            const child = directChildren[0];
-            if (child.id !== 'root') {
-                // Promote grandchildren to root
-                State.nodes.filter(n => n.parentIds.includes(child.id)).forEach(grand => {
-                    grand.parentIds = ['root'];
-                });
-                // Remove the child node
-                State.nodes = State.nodes.filter(n => n.id !== child.id);
-                // Rename root to child's name
-                rootNode.name = child.name;
-                await DB.save(false);
-                // The later Core.refresh() will rebuild the graph with the new structure
-            }
-        }
-    }
     
     // --- ONE-TIME MIGRATION: Delete Master node ---
     const masterMigrationKey = 'master_deleted_v1';
@@ -13168,7 +13149,7 @@ function getStepData(step) {
                 dropZone.innerHTML = `
                     <div style="font-size: 2rem; margin-bottom: 0;">📄</div>
                     <div style="font-weight: 600; color: #cbd5e1; font-size: 0.9rem;">Drag & drop file or click to browse</div>
-                    <div style="font-size: 0.75rem; color: #94a3b8; margin-top: 4px;">PDF, DOCX, TXT, EPUB – first 20 pages will be used</div>
+                    <div style="font-size: 0.75rem; color: #94a3b8; margin-top: 4px;">PDF, DOCX, TXT, EPUB – up to 200 pages (or whole doc if shorter)</div>
                 `;
 
                 dropZone.addEventListener('click', () => fileInput.click());
