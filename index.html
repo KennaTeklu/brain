@@ -8250,8 +8250,8 @@ window.addEventListener('load', async () => {
     
     await DB.load();
 
-    // --- MIGRATION: Flatten single-child root & rename center ---
-    if (!localStorage.getItem('rootName')) {
+    // --- MIGRATION: Flatten single-child root & rename center (runs until condition is false) ---
+    {
         const directChildren = State.nodes.filter(n => n.parentIds.includes('root'));
         if (directChildren.length === 1) {
             const child = directChildren[0];
