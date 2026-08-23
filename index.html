@@ -8249,6 +8249,27 @@ window.addEventListener('load', async () => {
     
     await DB.load();
     loadGlobalActivity();
+
+    // --- MIGRATION: Flatten duplicate subject node & rename root ---
+    const rootNode = State.nodes.find(n => n.id === 'root');
+    if (rootNode && rootNode.name === 'Knowledge Universe') {
+        const directChildren = State.nodes.filter(n => n.parentIds.includes('root'));
+        if (directChildren.length === 1) {
+            const child = directChildren[0];
+            if (child.id !== 'root') {
+                // Promote grandchildren to root
+                State.nodes.filter(n => n.parentIds.includes(child.id)).forEach(grand => {
+                    grand.parentIds = ['root'];
+                });
+                // Remove the child node
+                State.nodes = State.nodes.filter(n => n.id !== child.id);
+                // Rename root to child's name
+                rootNode.name = child.name;
+                await DB.save(false);
+                // The later Core.refresh() will rebuild the graph with the new structure
+            }
+        }
+    }
     
     // --- ONE-TIME MIGRATION: Delete Master node ---
     const masterMigrationKey = 'master_deleted_v1';
