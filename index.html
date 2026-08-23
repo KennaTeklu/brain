@@ -5583,8 +5583,8 @@ const Graph3D = {
             };
             placeChildren(rootNode, 1, new THREE.Vector3(0, 1, 0));
 
-            // Distance enforcement for focused mode only
-            if (!isSolar) {
+              // Distance enforcement for all modes (including solar view)
+            {
                 const minNodeDistance = 6.0;
                 const rootPos = new THREE.Vector3(0, 0, 0);
                 for (let node of allNodes) {
@@ -8255,17 +8255,15 @@ window.addEventListener('load', async () => {
         const directChildren = State.nodes.filter(n => n.parentIds.includes('root'));
         if (directChildren.length === 1) {
             const child = directChildren[0];
-            // Grab the child's name to become the new root name
             const newRootName = child.name;
-            // Move grandchildren up to root
+            // Move grandchildren up to root, stripping stale positions
             State.nodes.filter(n => n.parentIds.includes(child.id)).forEach(grand => {
                 grand.parentIds = ['root'];
+                delete grand.x; delete grand.y; delete grand.z;
+                delete grand.fx; delete grand.fy; delete grand.fz;
             });
-            // Delete the child node
             State.nodes = State.nodes.filter(n => n.id !== child.id);
-            // Save the new root name
             localStorage.setItem('rootName', newRootName);
-            // Save DB changes
             await DB.save(false);
             // Clear cached graph layout and reset view to root
             try {
@@ -8275,7 +8273,7 @@ window.addEventListener('load', async () => {
             }
             State.focusId = 'root';
             State.path = [];
-            State.fixedPositions = {};   // Clear old drag positions
+            State.fixedPositions = {};
             State.solarViewEnabled = true;
             localStorage.setItem('solarViewEnabled', 'true');
         }
