@@ -5585,7 +5585,7 @@ const Graph3D = {
 
               // Distance enforcement for all modes (including solar view)
             {
-                const minNodeDistance = 6.0;
+                const minNodeDistance = Math.max(6.0, Math.sqrt(allNodes.length) * 0.8);
                 const rootPos = new THREE.Vector3(0, 0, 0);
                 for (let node of allNodes) {
                     if (node.id === rootNode.id) continue;
@@ -5600,7 +5600,7 @@ const Graph3D = {
                     }
                 }
                 let iterations = 0;
-                const maxIterations = 100;
+                const maxIterations = 200;
                 let moved = true;
                 while (moved && iterations < maxIterations) {
                     moved = false;
