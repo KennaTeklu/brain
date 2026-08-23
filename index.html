@@ -5533,7 +5533,7 @@ const Graph3D = {
             // console.log("Computing layout from scratch");
             const rootChildrenCount = State.nodes.filter(n => n.parentIds.includes(rootNode.id)).length;
             const baseOrbitalRadius = isSolar 
-                ? Math.min(15.0, Math.max(6.0, 8.0 * Math.sqrt(rootChildrenCount / 10)))
+                ? Math.min(25.0, Math.max(6.0, 8.0 * Math.sqrt(rootChildrenCount / 10)))
                 : Math.min(25.0, Math.max(12.0, 10.0 * Math.sqrt(rootChildrenCount / 10)));
 
             const root = allNodes.find(n => n.id === rootNode.id);
@@ -5585,7 +5585,7 @@ const Graph3D = {
 
               // Distance enforcement for all modes (including solar view)
             {
-                const minNodeDistance = Math.max(6.0, Math.sqrt(allNodes.length) * 0.8);
+                const minNodeDistance = Math.max(8.0, Math.sqrt(allNodes.length) * 1.0);
                 const rootPos = new THREE.Vector3(0, 0, 0);
                 for (let node of allNodes) {
                     if (node.id === rootNode.id) continue;
