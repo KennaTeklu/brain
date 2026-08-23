@@ -12534,73 +12534,175 @@ async function handlePayment() {
             }
         }
 
-        window.extractTextFromFile = async function(file, maxPages = 20) {
-            if (!file) return '';
-            if (file.type === 'application/pdf' || file.name.endsWith('.pdf')) {
-                await ensureLib('pdf');
-                const arrayBuffer = await file.arrayBuffer();
-                const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-                let fullText = '';
-                const pagesToExtract = Math.min(pdf.numPages, maxPages);
-                for (let i = 1; i <= pagesToExtract; i++) {
-                    const page = await pdf.getPage(i);
-                    const textContent = await page.getTextContent();
-                    const pageText = textContent.items.map(item => item.str).join(' ').replace(/\s+/g, ' ');
-                    fullText += pageText + '\n\n';
+window.extractTextFromFile = async function(file, maxPages = 200) {
+    if (!file) return '';
+
+    let fullText = '';
+
+    // ---------- PDF ----------
+    if (file.type === 'application/pdf' || file.name.endsWith('.pdf')) {
+        await ensureLib('pdf');
+        const arrayBuffer = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        const pagesToExtract = Math.min(pdf.numPages, maxPages);
+        for (let i = 1; i <= pagesToExtract; i++) {
+            const page = await pdf.getPage(i);
+            const textContent = await page.getTextContent();
+            const pageText = textContent.items.map(item => item.str).join(' ').replace(/\s+/g, ' ');
+            // Add page marker for structural detection
+            fullText += `\n\n---PAGE ${i}---\n\n${pageText}`;
+        }
+    }
+    // ---------- TXT ----------
+    else if (file.type === 'text/plain' || file.name.endsWith('.txt')) {
+        fullText = await file.text();
+    }
+    // ---------- DOCX ----------
+    else if (file.name.endsWith('.docx')) {
+        await ensureLib('mammoth');
+        const arrayBuffer = await file.arrayBuffer();
+        const result = await mammoth.convertToHtml({ arrayBuffer });
+        const temp = document.createElement('div');
+        temp.innerHTML = result.value;
+        fullText = temp.textContent.trim();
+    }
+    // ---------- EPUB ----------
+    else if (file.name.endsWith('.epub')) {
+        await ensureLib('zip');
+        const arrayBuffer = await file.arrayBuffer();
+        const zipReader = new zip.ZipReader(new zip.BlobReader(new Blob([arrayBuffer])));
+        const entries = await zipReader.getEntries();
+        const containerEntry = entries.find(e => e.filename === 'META-INF/container.xml');
+        if (!containerEntry) throw new Error('Invalid EPUB');
+        const containerXml = await containerEntry.getData(new zip.TextWriter());
+        const parser = new DOMParser();
+        const containerDoc = parser.parseFromString(containerXml, 'application/xml');
+        const rootfilePath = containerDoc.querySelector('rootfile').getAttribute('full-path');
+        const opfEntry = entries.find(e => e.filename === rootfilePath);
+        const opfXml = await opfEntry.getData(new zip.TextWriter());
+        const opfDoc = parser.parseFromString(opfXml, 'application/xml');
+        const spineItems = opfDoc.querySelectorAll('spine itemref');
+        const opfDir = rootfilePath.substring(0, rootfilePath.lastIndexOf('/') + 1);
+        const itemMap = new Map();
+        opfDoc.querySelectorAll('manifest item').forEach(item => {
+            const id = item.getAttribute('id');
+            const href = item.getAttribute('href');
+            if(id && href) itemMap.set(id, opfDir + href);
+        });
+        for(let i=0; i<spineItems.length; i++) {
+            const idref = spineItems[i].getAttribute('idref');
+            const itemPath = itemMap.get(idref);
+            if(!itemPath) continue;
+            const contentEntry = entries.find(e => e.filename === itemPath);
+            if(contentEntry) {
+                const contentXml = await contentEntry.getData(new zip.TextWriter());
+                const contentDoc = parser.parseFromString(contentXml, 'application/xhtml+xml');
+                const body = contentDoc.querySelector('body');
+                if(body) fullText += body.textContent + '\n\n';
+            }
+        }
+        await zipReader.close();
+    }
+
+    // ---------- SMART STRUCTURE DETECTION ----------
+    const relevant = extractRelevantSection(fullText);
+    return relevant.trim();
+};
+
+/**
+ * Detect and extract the most structured part of the document.
+ * Looks for table of contents, syllabus, outline, or structured heading patterns.
+ * Falls back to a large chunk (200 pages or whole document) if no structure found.
+ */
+function extractRelevantSection(text) {
+    if (!text) return '';
+
+    // 1. Define markers for TOC / syllabus / outline
+    const tocMarkers = [
+        /\btable\s+of\s+contents\b/i,
+        /\bcontents\b/i,
+        /\boutline\b/i,
+        /\bsyllabus\b/i,
+        /\bcourse\s+outline\b/i,
+        /\bmodule\s+overview\b/i,
+        /\bunit\s+overview\b/i,
+        /\boverview\b/i,
+        /\bindex\b/i,
+        /\bchapters?\s+list\b/i,
+        /\blessons?\s+list\b/i
+    ];
+
+    let bestStart = -1;
+    let bestEnd = -1;
+    let bestMarker = null;
+
+    // Scan for the earliest marker that is followed by structured content
+    for (let m of tocMarkers) {
+        const match = m.exec(text);
+        if (match) {
+            const markerIndex = match.index;
+            // Look ahead for a series of short lines (list-like) within the next 5000 chars
+            const window = text.substring(markerIndex, markerIndex + 5000);
+            // Count lines that look like headings (start with capital or number, short length)
+            const lines = window.split('\n');
+            let structuredLines = 0;
+            let totalLines = 0;
+            for (let line of lines) {
+                const trimmed = line.trim();
+                if (trimmed.length === 0) continue;
+                totalLines++;
+                // Heuristic: line is a heading if it starts with a capital letter, number, or Roman numeral, and is short (<80 chars)
+                if (/^[A-Z0-9IVXLCDM]/.test(trimmed) && trimmed.length < 80) {
+                    structuredLines++;
                 }
-                return fullText.trim();
             }
-            if (file.type === 'text/plain' || file.name.endsWith('.txt')) {
-                return await file.text();
-            }
-            if (file.name.endsWith('.docx')) {
-                await ensureLib('mammoth');
-                const arrayBuffer = await file.arrayBuffer();
-                const result = await mammoth.convertToHtml({ arrayBuffer });
-                const temp = document.createElement('div');
-                temp.innerHTML = result.value;
-                return temp.textContent.trim();
-            }
-            if (file.name.endsWith('.epub')) {
-                await ensureLib('zip');
-                const arrayBuffer = await file.arrayBuffer();
-                const zipReader = new zip.ZipReader(new zip.BlobReader(new Blob([arrayBuffer])));
-                const entries = await zipReader.getEntries();
-                const containerEntry = entries.find(e => e.filename === 'META-INF/container.xml');
-                if (!containerEntry) throw new Error('Invalid EPUB');
-                const containerXml = await containerEntry.getData(new zip.TextWriter());
-                const parser = new DOMParser();
-                const containerDoc = parser.parseFromString(containerXml, 'application/xml');
-                const rootfilePath = containerDoc.querySelector('rootfile').getAttribute('full-path');
-                const opfEntry = entries.find(e => e.filename === rootfilePath);
-                const opfXml = await opfEntry.getData(new zip.TextWriter());
-                const opfDoc = parser.parseFromString(opfXml, 'application/xml');
-                const spineItems = opfDoc.querySelectorAll('spine itemref');
-                const opfDir = rootfilePath.substring(0, rootfilePath.lastIndexOf('/') + 1);
-                const itemMap = new Map();
-                opfDoc.querySelectorAll('manifest item').forEach(item => {
-                    const id = item.getAttribute('id');
-                    const href = item.getAttribute('href');
-                    if(id && href) itemMap.set(id, opfDir + href);
-                });
-                let fullText = '';
-                for(let i=0; i<spineItems.length; i++) {
-                    const idref = spineItems[i].getAttribute('idref');
-                    const itemPath = itemMap.get(idref);
-                    if(!itemPath) continue;
-                    const contentEntry = entries.find(e => e.filename === itemPath);
-                    if(contentEntry) {
-                        const contentXml = await contentEntry.getData(new zip.TextWriter());
-                        const contentDoc = parser.parseFromString(contentXml, 'application/xhtml+xml');
-                        const body = contentDoc.querySelector('body');
-                        if(body) fullText += body.innerText + '\n\n';
-                    }
+            if (totalLines > 3 && structuredLines / totalLines > 0.6) {
+                // Candidate: marker + structured lines
+                bestStart = markerIndex;
+                // Find end: next occurrence of a real chapter heading (e.g., "Chapter 1") that is followed by a long paragraph
+                const afterMarker = text.substring(markerIndex + match[0].length);
+                const chapterPattern = /\b(?:chapter|lesson|unit|part|module|section)\s+\d+\b/i;
+                const chapterMatch = chapterPattern.exec(afterMarker);
+                if (chapterMatch) {
+                    // Approximate end as the start of the chapter heading that is not part of TOC
+                    // We'll take up to the chapter heading, but if the TOC itself has the chapter heading,
+                    // we need to pick the second occurrence (the actual content). For simplicity, take first occurrence
+                    // and rely on the AI to understand structure.
+                    bestEnd = markerIndex + match[0].length + chapterMatch.index;
+                } else {
+                    // No chapter found – take next 3000 chars after marker as a safe chunk
+                    bestEnd = Math.min(text.length, markerIndex + 3000);
                 }
-                await zipReader.close();
-                return fullText.trim();
+                break;
             }
-            return '';
-        };
+        }
+    }
+
+    // If a good TOC section was found, return it (with some preceding context)
+    if (bestStart !== -1 && bestEnd !== -1) {
+        // Include up to 500 chars before the marker for context
+        const start = Math.max(0, bestStart - 500);
+        return text.substring(start, bestEnd);
+    }
+
+    // 2. Fallback: look for a numbered chapter pattern anywhere in the text
+    const chapterPatterns = [
+        /\b(?:chapter|lesson|unit|part|module|section)\s+\d+\b/i,
+        /^\s*\d+\.\s+[A-Z]/m,
+        /^\s*[IVXLCDM]+\.\s+[A-Z]/m
+    ];
+    for (let p of chapterPatterns) {
+        const match = p.exec(text);
+        if (match) {
+            // Extract from the first chapter heading to the end of the document (or next 10000 chars)
+            return text.substring(match.index);
+        }
+    }
+
+    // 3. No pattern found – return the whole text (or first 200 pages if truncated)
+    // Since we already extracted up to maxPages (200), just return fullText
+    return text;
+}
     })();
 </script>
 <script>
@@ -12617,7 +12719,6 @@ async function handlePayment() {
     function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
     let onboardingSubject = '';
-	let onboardingLanguage = 'English';
     let onboardingStep = 1;
     let arrowShown = false;
 
@@ -13017,30 +13118,58 @@ function getStepData(step) {
                 `;
                 pasteArea.addEventListener('input', () => {
                     const val = pasteArea.value.trim();
-                    const btn = document.getElementById('onboarding-next-btn');
                     if (val.length > 20) {
                         window._onboardingExtractedText = val;
-                        btn.style.opacity = '1'; btn.style.pointerEvents = 'auto'; btn.dataset.ready = 'true';
+                        checkNextState();
                     } else {
                         window._onboardingExtractedText = '';
-                        btn.style.opacity = '0.5'; btn.style.pointerEvents = 'none'; btn.dataset.ready = 'false';
+                        checkNextState();
                     }
                 });
 
+                // Ownership checkbox
+                const ownershipWrapper = document.createElement('div');
+                ownershipWrapper.style.cssText = 'display: flex; align-items: center; gap: 10px; margin-top: 8px; font-size: 0.9rem; color: #cbd5e1;';
+                const ownershipCheck = document.createElement('input');
+                ownershipCheck.type = 'checkbox';
+                ownershipCheck.id = 'onboarding-ownership-check';
+                ownershipCheck.style.cssText = 'width: 20px; height: 20px; accent-color: #2dd4bf; cursor: pointer;';
+                const ownershipLabel = document.createElement('label');
+                ownershipLabel.htmlFor = 'onboarding-ownership-check';
+                ownershipLabel.textContent = 'I own this file or have permission to use it.';
+                ownershipWrapper.appendChild(ownershipCheck);
+                ownershipWrapper.appendChild(ownershipLabel);
+
+                ownershipCheck.addEventListener('change', () => {
+                    checkNextState();
+                });
+
+                // Append elements
                 wrapper.appendChild(dropZone);
                 wrapper.appendChild(fileInput);
                 wrapper.appendChild(pasteArea);
+                wrapper.appendChild(ownershipWrapper);
                 container.appendChild(wrapper);
+
+                function checkNextState() {
+                    const btn = document.getElementById('onboarding-next-btn');
+                    const hasText = (window._onboardingExtractedText && window._onboardingExtractedText.length > 20);
+                    const ownsFile = document.getElementById('onboarding-ownership-check')?.checked === true;
+                    if (hasText && ownsFile) {
+                        btn.style.opacity = '1'; btn.style.pointerEvents = 'auto'; btn.dataset.ready = 'true';
+                    } else {
+                        btn.style.opacity = '0.5'; btn.style.pointerEvents = 'none'; btn.dataset.ready = 'false';
+                    }
+                }
 
                 async function handleFile(file, zone) {
                     try {
                         zone.innerHTML = '<div style="font-size: 2rem;">⏳</div><div>Extracting...</div>';
-                        const extracted = await extractTextFromFile(file, 20);
-                        const btn = document.getElementById('onboarding-next-btn');
+                        const extracted = await extractTextFromFile(file, 200);
                         if (!extracted || extracted.length < 20) {
                             zone.innerHTML = '<div style="font-size: 2rem;">❌</div><div>No text found</div>';
                             window._onboardingExtractedText = '';
-                            btn.style.opacity = '0.5'; btn.style.pointerEvents = 'none'; btn.dataset.ready = 'false';
+                            checkNextState();
                             return;
                         }
                         window._onboardingExtractedText = extracted;
@@ -13050,12 +13179,11 @@ function getStepData(step) {
                             <div style="color: #4ade80;">Extracted ${extracted.length} characters</div>
                             <div style="font-size: 0.7rem; color: #94a3b8;">First 80: "${preview.replace(/"/g, '&quot;')}"</div>
                         `;
-                        btn.style.opacity = '1'; btn.style.pointerEvents = 'auto'; btn.dataset.ready = 'true';
+                        checkNextState();
                     } catch (err) {
                         zone.innerHTML = `<div style="font-size: 2rem;">❌</div><div>Error: ${err.message}</div>`;
                         window._onboardingExtractedText = '';
-                        const btn = document.getElementById('onboarding-next-btn');
-                        btn.style.opacity = '0.5'; btn.style.pointerEvents = 'none'; btn.dataset.ready = 'false';
+                        checkNextState();
                     }
                 }
             }
@@ -13373,28 +13501,38 @@ function getStepData(step) {
 function getCategoriesPrompt() {
     const subject = onboardingSubject || 'your subject';
     const extractedContent = window._onboardingExtractedText || '';
-    return `Act as an expert in hierarchical categorization. Based on the study material I will provide, extract the complete hierarchical structure of topics.
+    return `Act as an expert in hierarchical categorization and syllabus reconstruction. Your task is to generate a complete, deeply nested hierarchical JSON structure based ONLY on the study material text I provide.
 
-For each topic, include a very short (few words) contextual summary in brackets after the name, explaining what that topic covers.
+IMPORTANT: The provided text may be a full document, syllabus, module outline, chapter list, or table of contents. Use ALL the text provided. If the text is truncated, prioritize the most structured portions (e.g., headings, numbered lists, table of contents). Do not skip any part that contains headings or topic listings.
 
-Output valid JSON inside a markdown code block \`\`\`json according to this schema:
+RULES:
+1. PRESERVE THE ORIGINAL STRUCTURE:
+   - Use the document's headings, numbered units, bullet points, or week-by-week schedule as your top-level and second-level node names.
+   - Do NOT rename them with generic textbook titles unless the document uses synonyms.
+   - Recognize the document type (syllabus, module, chapter, etc.) and preserve its own terminology (e.g., "Module 1", "Week 3", "Unit II").
+
+2. DEEPEN ONLY WHERE IMPLIED OR SPARSE:
+   - If a topic is named but not broken down, you may split it into its commonly understood sub-components (e.g., "Photosynthesis" → "Light Reactions" / "Dark Reactions").
+   - Do NOT add entirely unrelated subtopics that the document does not hint at.
+   - If the document is sparse (e.g., just bullet points), you may create logical subdivisions based on standard knowledge of the subject, as long as they are **directly related** to the parent topic and **essential** to understanding it. Avoid inventing niche or obscure sub-topics.
+
+3. DEPTH: Build 3 to 5 levels where the topic naturally branches. Avoid forcing a single-child node; it's acceptable to have one if the source clearly indicates it. Do NOT merge distinct topics just to reach a minimum child count.
+
+4. SUMMARIES: For every node, include a short explanation in brackets after the name (e.g., "Mitochondria [energy powerhouse]").
+
+5. OUTPUT: Provide ONLY the raw JSON. No markdown code fences, no explanations, no extra text. The JSON must follow this exact schema:
 {
   "type": "categories",
   "items": [
-    {"name": "Topic name [brief summary]", "children": [{"name": "Sub-topic..."}] }
+    {"name": "Topic name [brief summary]", "children": [{"name": "Sub-topic...", "children": [...]}] }
   ]
 }
 
-The study material is about: ${subject}
-The content and summaries must be in English.
+HERE IS THE EXTRACTED STUDY MATERIAL TEXT (may be truncated):
 
-Here is the extracted text from the study material (may be truncated):
+${extractedContent}
 
----
-${extractedContent.substring(0, 5000)}
----
-
-Now, analyze the following content and generate the categories JSON:`;
+Generate the JSON now.`;
 }
        // --- ROBUST CATEGORY PROCESSING (Fixed `await` & Redundancy) ---
 async function processOnboardingCategories(jsonText) {
