@@ -8275,6 +8275,9 @@ window.addEventListener('load', async () => {
             }
             State.focusId = 'root';
             State.path = [];
+            State.fixedPositions = {};   // Clear old drag positions
+            State.solarViewEnabled = true;
+            localStorage.setItem('solarViewEnabled', 'true');
         }
     }
     loadGlobalActivity();
