@@ -6002,7 +6002,13 @@ const Graph3D = {
             if (moved && isDragging && nodeObj && nodeObj.id !== 'root') {
                 // Drag finished: save fixed position
                 State.fixedPositions[nodeObj.id] = { fx: nodeObj.fx, fy: nodeObj.fy, fz: nodeObj.fz };
-                await DB.save(false);
+	            await DB.save(false);
+	            // Clear any cached graph layout so the new structure gets a fresh distribution
+	            try {
+	                await dexieDB.graphCache.clear();
+	            } catch (e) {
+	                console.warn('Could not clear graph cache:', e);
+	            }
                 nodeObj.fx = nodeObj.x;
                 nodeObj.fy = nodeObj.y;
                 nodeObj.fz = nodeObj.z;
