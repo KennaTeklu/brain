@@ -12893,9 +12893,9 @@ function showFloatingArrow(targetSelector, message, duration = 8000) {
 }
 
     // --- Main Wizard ---
-    async function runOnboarding() {
-        console.log('[Onboarding] Starting wizard...');
-        if (!isOnboardingNeeded()) {
+	async function runOnboarding(force = false) {
+	    console.log('[Onboarding] Starting wizard...');
+	    if (!force && !isOnboardingNeeded()) {
             console.log('[Onboarding] Not needed (map already has content).');
             // Ensure Brain is ready if it exists
             if (State.nodes.some(n => n.id === BRAIN_NODE_ID)) {
@@ -13979,10 +13979,12 @@ document.addEventListener('input', function(e) {
 // ----- Dock button click (restart onboarding) -----
 document.getElementById('dock-add').addEventListener('click', function() {
     const nonRootCount = (State.nodes || []).filter(n => n.id !== 'root').length;
-    if (nonRootCount === 0) {
-        if (typeof runOnboarding === 'function') runOnboarding();
+    if (nonRootCount <= 1) {
+        // Make Brain: always open the intro wizard
+        if (typeof runOnboarding === 'function') runOnboarding(true);
         else { localStorage.removeItem('onboarding_complete_v2'); location.reload(); }
     } else {
+        // Swap Brain: confirmation + wipe flow
         if (typeof swapBrain === 'function') swapBrain();
         else { localStorage.removeItem('onboarding_complete_v2'); location.reload(); }
     }
