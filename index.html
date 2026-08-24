@@ -5891,6 +5891,7 @@ const Graph3D = {
         let lastTapNode = null;
         let tapTimeout = null;
         let touchStartNode = null;
+		let doubleTapEducated = localStorage.getItem('doubleTapEducated') === 'true';
         let touchStartTime = 0;
         let touchMoved = false;
         let longPressTimer = null;
@@ -5954,6 +5955,12 @@ const Graph3D = {
                     this.renderer.domElement.style.cursor = 'pointer';
                     const nodeObj = this.nodeObjects.find(n => n.mesh === this.hoveredNode);
                     if (nodeObj) showName(nodeObj._nodeName, 0); // persistent
+                    // 👇 NEW: Show hint once when hovering over any node for the first time
+                    if (!doubleTapEducated) {
+                        UI.toast('💡 Double‑tap opens this topic');
+                        doubleTapEducated = true;
+                        localStorage.setItem('doubleTapEducated', 'true');
+                    }
                 } else {
                     this.renderer.domElement.style.cursor = 'default';
                 }
