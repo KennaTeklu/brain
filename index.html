@@ -5471,9 +5471,8 @@ const Graph3D = {
 
         // 2. Determine the root node
         let rootId = isSolar ? 'root' : State.focusId;
-        const savedRootName = localStorage.getItem('rootName') || 'Knowledge Universe';
         let rootNode = rootId === 'root' ?
-            { id: 'root', name: savedRootName, type: 'root', size: 30000, understanding: Math.round(d3.mean(State.nodes.filter(n => n.parentIds.includes('root')), c => c.understanding)) || 0, parentIds: [] } :
+            { id: 'root', name: 'Knowledge Universe', type: 'root', size: 30000, understanding: Math.round(d3.mean(State.nodes.filter(n => n.parentIds.includes('root')), c => c.understanding)) || 0, parentIds: [] } :
             State.nodes.find(n => n.id === rootId);
         if (!rootNode && rootId !== 'root') return Core.goHome();
 
@@ -5533,7 +5532,7 @@ const Graph3D = {
             // console.log("Computing layout from scratch");
             const rootChildrenCount = State.nodes.filter(n => n.parentIds.includes(rootNode.id)).length;
             const baseOrbitalRadius = isSolar 
-                ? Math.min(25.0, Math.max(6.0, 8.0 * Math.sqrt(rootChildrenCount / 10)))
+                ? Math.min(15.0, Math.max(6.0, 8.0 * Math.sqrt(rootChildrenCount / 10)))
                 : Math.min(25.0, Math.max(12.0, 10.0 * Math.sqrt(rootChildrenCount / 10)));
 
             const root = allNodes.find(n => n.id === rootNode.id);
@@ -5583,9 +5582,9 @@ const Graph3D = {
             };
             placeChildren(rootNode, 1, new THREE.Vector3(0, 1, 0));
 
-              // Distance enforcement for all modes (including solar view)
-            {
-                const minNodeDistance = Math.max(8.0, Math.sqrt(allNodes.length) * 1.0);
+            // Distance enforcement for focused mode only
+            if (!isSolar) {
+                const minNodeDistance = 6.0;
                 const rootPos = new THREE.Vector3(0, 0, 0);
                 for (let node of allNodes) {
                     if (node.id === rootNode.id) continue;
@@ -5600,7 +5599,7 @@ const Graph3D = {
                     }
                 }
                 let iterations = 0;
-                const maxIterations = 200;
+                const maxIterations = 100;
                 let moved = true;
                 while (moved && iterations < maxIterations) {
                     moved = false;
@@ -6002,7 +6001,7 @@ const Graph3D = {
             if (moved && isDragging && nodeObj && nodeObj.id !== 'root') {
                 // Drag finished: save fixed position
                 State.fixedPositions[nodeObj.id] = { fx: nodeObj.fx, fy: nodeObj.fy, fz: nodeObj.fz };
-	            await DB.save(false);
+                await DB.save(false);
                 nodeObj.fx = nodeObj.x;
                 nodeObj.fy = nodeObj.y;
                 nodeObj.fz = nodeObj.z;
@@ -8249,35 +8248,6 @@ window.addEventListener('load', async () => {
     }
     
     await DB.load();
-
-    // --- MIGRATION: Flatten single-child root & rename center (runs until condition is false) ---
-    {
-        const directChildren = State.nodes.filter(n => n.parentIds.includes('root'));
-        if (directChildren.length === 1) {
-            const child = directChildren[0];
-            const newRootName = child.name;
-            // Move grandchildren up to root, stripping stale positions
-            State.nodes.filter(n => n.parentIds.includes(child.id)).forEach(grand => {
-                grand.parentIds = ['root'];
-                delete grand.x; delete grand.y; delete grand.z;
-                delete grand.fx; delete grand.fy; delete grand.fz;
-            });
-            State.nodes = State.nodes.filter(n => n.id !== child.id);
-            localStorage.setItem('rootName', newRootName);
-            await DB.save(false);
-            // Clear cached graph layout and reset view to root
-            try {
-                await dexieDB.graphCache.clear();
-            } catch (e) {
-                console.warn('Could not clear graph cache:', e);
-            }
-            State.focusId = 'root';
-            State.path = [];
-            State.fixedPositions = {};
-            State.solarViewEnabled = true;
-            localStorage.setItem('solarViewEnabled', 'true');
-        }
-    }
     loadGlobalActivity();
     
     // --- ONE-TIME MIGRATION: Delete Master node ---
@@ -13150,7 +13120,7 @@ function getStepData(step) {
                 dropZone.innerHTML = `
                     <div style="font-size: 2rem; margin-bottom: 0;">📄</div>
                     <div style="font-weight: 600; color: #cbd5e1; font-size: 0.9rem;">Drag & drop file or click to browse</div>
-                    <div style="font-size: 0.75rem; color: #94a3b8; margin-top: 4px;">PDF, DOCX, TXT, EPUB – up to 200 pages (or whole doc if shorter)</div>
+                    <div style="font-size: 0.75rem; color: #94a3b8; margin-top: 4px;">PDF, DOCX, TXT, EPUB – first 20 pages will be used</div>
                 `;
 
                 dropZone.addEventListener('click', () => fileInput.click());
@@ -13631,20 +13601,27 @@ async function processOnboardingCategories(jsonText) {
         };
         for (let cat of items) addCategory(cat, 'root');
 
-    // --- SET ROOT NAME & FLATTEN IF NEEDED ---
-    const subjectName = onboardingSubject || 'Knowledge Universe';
-    localStorage.setItem('rootName', subjectName);
-    // If the JSON still has a single subject node, flatten it (for backward compatibility)
-    const directChildren = State.nodes.filter(n => n.parentIds.includes('root'));
-    if (directChildren.length === 1) {
-        const child = directChildren[0];
-        if (child.name === subjectName || child.name.includes(subjectName)) {
-            State.nodes.filter(n => n.parentIds.includes(child.id)).forEach(grand => {
-                grand.parentIds = ['root'];
-            });
-            State.nodes = State.nodes.filter(n => n.id !== child.id);
+        // --- RENAME ROOT & FLATTEN DUPLICATE SUBJECT NODE ---
+        const subjectName = onboardingSubject || 'Knowledge Universe';
+        const rootNode = State.nodes.find(n => n.id === 'root');
+        if (rootNode) {
+            const directChildren = State.nodes.filter(n => n.parentIds.includes('root'));
+            // If there is exactly one direct child that is a category with the same name as the subject,
+            // flatten it: move its children to root, then remove that child.
+            if (directChildren.length === 1) {
+                const child = directChildren[0];
+                if (child.name === subjectName || child.name.includes(subjectName)) {
+                    // Move grandchildren up to root
+                    State.nodes.filter(n => n.parentIds.includes(child.id)).forEach(grand => {
+                        grand.parentIds = ['root'];
+                    });
+                    // Remove the duplicate subject node
+                    State.nodes = State.nodes.filter(n => n.id !== child.id);
+                }
+            }
+            // Rename root to subject name
+            rootNode.name = subjectName;
         }
-    }
 
         MathCore.cascadeAll();
         await DB.save();
