@@ -5957,7 +5957,9 @@ const Graph3D = {
                     if (nodeObj) showName(nodeObj._nodeName, 0); // persistent
                     // 👇 Show hint on hover, but only until the user has double‑tapped once
                     if (!doubleTapEducated) {
-                        UI.toast('💡 Double‑tap opens this topic');
+                        const nodeName = nodeObj?._nodeName || 'this topic';
+                        const shortName = nodeName.length > 20 ? nodeName.slice(0, 17) + '...' : nodeName;
+                        UI.toast('💡 Double‑tap opens "' + shortName + '"');
                     }
                 } else {
                     this.renderer.domElement.style.cursor = 'default';
