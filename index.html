@@ -5955,11 +5955,9 @@ const Graph3D = {
                     this.renderer.domElement.style.cursor = 'pointer';
                     const nodeObj = this.nodeObjects.find(n => n.mesh === this.hoveredNode);
                     if (nodeObj) showName(nodeObj._nodeName, 0); // persistent
-                    // 👇 NEW: Show hint once when hovering over any node for the first time
+                    // 👇 Show hint on hover, but only until the user has double‑tapped once
                     if (!doubleTapEducated) {
                         UI.toast('💡 Double‑tap opens this topic');
-                        doubleTapEducated = true;
-                        localStorage.setItem('doubleTapEducated', 'true');
                     }
                 } else {
                     this.renderer.domElement.style.cursor = 'default';
@@ -6080,6 +6078,11 @@ this.renderer.domElement.addEventListener('touchend', (e) => {
             if (now - lastTapTime < 300 && lastTapNode === nodeObj) {
                 // Double tap -> ALWAYS open the folder
                 Core.focus(nodeObj.id);
+                // 👇 Mark as educated after the user actually uses double‑tap
+                if (!doubleTapEducated) {
+                    doubleTapEducated = true;
+                    localStorage.setItem('doubleTapEducated', 'true');
+                }
                 lastTapTime = 0;
                 lastTapNode = null;
                 if (tapTimeout) clearTimeout(tapTimeout);
