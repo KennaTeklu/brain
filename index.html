@@ -3303,8 +3303,8 @@ body.modal-open {
                 <button id="dock-restore"><i class="fas fa-upload"></i> Restore</button>
             </div>
             <button id="dock-solar-view" class="btn-secondary"><i class="fas fa-solar-system"></i> Full Tree</button>
-            <button id="library-categories-btn" class="btn-primary"><i class="fas fa-book"></i> Try Kenna's setup</button>
-            <button id="remove-library-categories-btn" class="btn-danger"><i class="fas fa-trash-alt"></i> Remove Kenna's Categories</button>
+            <button id="library-categories-btn" class="btn-primary"><i class="fas fa-book"></i> Try example setup</button>
+            <button id="remove-library-categories-btn" class="btn-danger"><i class="fas fa-trash-alt"></i> Remove example Categories</button>
             <button id="fit-graph-btn" class="btn-secondary"><i class="fas fa-expand-alt"></i> Reset View</button>
             <button id="dock-delete-all" class="btn-danger"><i class="fas fa-skull-crossbones"></i> Delete All</button>
             <button id="dock-about"><i class="fas fa-book"></i> About</button>
@@ -3312,7 +3312,7 @@ body.modal-open {
         </div>
         <!-- Copyright Notice – Separately Positioned -->
         <div id="copyright-notice" style="position: absolute; bottom: 20px; right: 24px; z-index: 21; font-size: 0.7rem; color: var(--text-dim); white-space: nowrap; pointer-events: none; user-select: none;">
-            © 2026 Kenna Teklu. All rights reserved.
+            © 2026 All rights reserved.
         </div>
     </div>
 
@@ -3451,6 +3451,7 @@ body.modal-open {
                 <span style="font-size:0.8rem; color:#1d1d1f; display:flex; align-items:center; gap:4px;">⭐ <span id="correctCount">0</span></span>
                 <span style="font-size:0.8rem; color:#1d1d1f; display:flex; align-items:center; gap:4px;">👁️ <span id="peekCount">0</span></span>
                 <button id="quiz-settings-gear" style="background:rgba(255,255,255,0.2); border:1px solid rgba(255,255,255,0.4); border-radius:40px; padding:0.3rem 0.8rem; font-weight:600; cursor:pointer; color:#1d1d1f; transition:0.15s; font-size:0.8rem;">⚙️</button>
+				<button id="quiz-print-btn" style="background:rgba(255,255,255,0.2); border:1px solid rgba(255,255,255,0.4); border-radius:40px; padding:0.3rem 0.8rem; font-weight:600; cursor:pointer; color:#1d1d1f; transition:0.15s; font-size:0.8rem;" title="Print questions & answer sheet">🖨️</button>
               <button id="quiz-close-btn" style="background:rgba(255,255,255,0.3); border:1px solid rgba(255,255,255,0.4); border-radius:40px; padding:0.3rem 1rem; font-weight:600; cursor:pointer; color:#1d1d1f; transition:0.15s; font-size:0.8rem;">✕ Back</button>
             </div>
         </div>
@@ -3710,7 +3711,7 @@ body.modal-open {
             <p>Start with a <strong>7-day free trial</strong>—no credit card required. Upload your first file, build your brain, and experience the most visually stunning way to study. Join thousands of students who are already turning their notes into 3D knowledge maps.</p>
         </article>
         <div style="margin-top:2rem; border-top:1px solid rgba(255,255,255,0.1); padding-top:1rem; text-align:center; font-size:0.8rem; color:#94a3b8;">
-            © 2026 Kenna Teklu. All rights reserved.
+            © 2026 All rights reserved.
         </div>
     </div>
 </div>
@@ -3771,10 +3772,8 @@ body.modal-open {
 
     // ---- Domain whitelist ----
     const host = window.location.hostname;
-    const allowed = host === 'kenna.mba' ||
-                   host === 'kennateklu.com' ||
-                   host.endsWith('.kenna.mba') ||
-                   host.endsWith('.kennateklu.com');
+	const allowed = host === 'try4ever.com' ||
+	                host.endsWith('.try4ever.com');
 
     if (!allowed) {
         // ---- Show the 404 page (same as lockout, but no timer) ----
@@ -3841,7 +3840,7 @@ body.modal-open {
       <h1>404</h1>
       <p><strong>File not found</strong></p>
       <p>
-        <a href="https://kenna.mba" target="_blank" rel="noopener noreferrer">contact the developer for more kenna.mba</a>
+        <a href="https://kenna.mba" target="_blank" rel="noopener noreferrer">contact the developer for more kennateklu.com</a>
       </p>
     </div>
   </body>
@@ -3915,7 +3914,7 @@ body.modal-open {
         if (!lockUntil) return false;
         const remaining = parseInt(lockUntil, 10) - Date.now();
         if (remaining > 0) {
-            // ---- 404 Page (clean, no GitHub, contact kenna.mba) ----
+            // ---- 404 Page (clean, no GitHub, contact kennateklu.com) ----
             document.body.innerHTML = `
 <!DOCTYPE html>
 <html>
@@ -3979,7 +3978,7 @@ body.modal-open {
       <h1>404</h1>
       <p><strong>File not found</strong></p>
       <p>
-        <a href="https://kenna.mba" target="_blank" rel="noopener noreferrer">contact the developer for more kenna.mba</a>
+        <a href="https://kennateklu.com" target="_blank" rel="noopener noreferrer">contact the developer for more kennateklu.com</a>
       </p>
     </div>
   </body>
@@ -8486,7 +8485,7 @@ window.addEventListener('load', async () => {
     const displayYear = currentYear > 2100 ? 2100 : currentYear;
     let copyrightText = `© ${originalYear}`;
     if (displayYear > originalYear) copyrightText += `-${displayYear}`;
-    copyrightText += ` Kenna Teklu. All rights reserved.`;
+    copyrightText += ` All rights reserved.`;
     const copyrightSpan = document.querySelector('#dock span:last-child');
     if (copyrightSpan) copyrightSpan.textContent = copyrightText;
     
@@ -14589,6 +14588,113 @@ setTimeout(() => {
         card.classList.remove('collapsed');
     }
 }, 0);
+</script>
+<script>
+    function printQuiz() {
+        const q = State.quiz;
+        const questions = q.visibleQuestions && q.visibleQuestions.length ? q.visibleQuestions : q.allQuestions;
+        if (!questions || questions.length === 0) { UI.toast('No questions to print.'); return; }
+
+        // Build lineage
+        let lineage = '';
+        const node = State.nodes.find(n => n.id === q.currentNodeId);
+        if (node) {
+            const path = [];
+            let current = node;
+            while (current && current.id !== 'root') {
+                path.unshift(current.name);
+                current = State.nodes.find(n => n.id === current.parentIds[0]);
+            }
+            lineage = path.join(' > ');
+        } else {
+            lineage = 'Unknown topic';
+        }
+
+        // Build question HTML
+        let questionsHtml = '';
+        questions.forEach((question, idx) => {
+            questionsHtml += `<div class="question"><strong>Q${idx+1}: ${escapeHtml(question.text)}</strong><br><ol>`;
+            question.choices.forEach((choice, cIdx) => {
+                questionsHtml += `<li>${escapeHtml(choice)}</li>`;
+            });
+            questionsHtml += `</ol></div>`;
+        });
+
+        // Build answer sheet: each answer as a letter (A, B, C, D) in order
+        const answerLines = [];
+        questions.forEach((question, idx) => {
+            answerLines.push(`${idx+1}${String.fromCharCode(65 + question.correct)}`);
+        });
+        const answerText = answerLines.join(' ');
+
+        const printWindow = window.open('', '_blank');
+        if (!printWindow) { UI.toast('Popup blocked. Please allow popups.'); return; }
+
+        printWindow.document.write(`
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Quiz Print</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; }
+        h1 { text-align: center; }
+        .header { margin-bottom: 20px; }
+        .lineage { font-size: 14px; color: #666; }
+        .questions { margin-top: 20px; }
+        .question { margin-bottom: 20px; }
+        .answers { page-break-before: always; }
+        .answer-sheet {
+            transform: rotate(180deg);
+            font-size: 6px;
+            color: rgba(0,0,0,0.2);
+            letter-spacing: 2px;
+            text-align: center;
+            margin-top: 200px;
+        }
+        .footer {
+            position: fixed;
+            bottom: 0;
+            width: 100%;
+            text-align: center;
+            font-size: 10px;
+            color: #999;
+            border-top: 1px solid #ccc;
+            padding: 10px;
+        }
+        .footer a { color: #999; text-decoration: none; }
+        @media print {
+            .footer { position: fixed; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>${escapeHtml(node ? node.name : 'Quiz')}</h1>
+        <div class="lineage">${escapeHtml(lineage)}</div>
+    </div>
+    <div class="questions">
+        ${questionsHtml}
+    </div>
+    <div class="answers">
+        <h2>Answer Sheet</h2>
+        <div class="answer-sheet">${answerText}</div>
+    </div>
+    <div class="footer">
+        © 2026 All rights reserved. | <a href="https://brain.try4ever.com" target="_blank">brain.try4ever.com</a>
+    </div>
+</body>
+</html>
+`);
+
+        printWindow.document.close();
+        printWindow.focus();
+        setTimeout(() => {
+            printWindow.print();
+        }, 500);
+    }
+
+    // Attach to button
+    document.getElementById('quiz-print-btn')?.addEventListener('click', printQuiz);
 </script>
 </body>
 </html>
