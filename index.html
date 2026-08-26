@@ -6030,6 +6030,11 @@ this.renderer.domElement.addEventListener('dblclick', (e) => {
     if (mesh) {
         const nodeObj = this.nodeObjects.find(n => n.mesh === mesh);
         if (nodeObj && nodeObj.id !== 'root') {
+            // Mark as educated after double‑click (stop the hover hint)
+            if (!doubleTapEducated) {
+                doubleTapEducated = true;
+                localStorage.setItem('doubleTapEducated', 'true');
+            }
             // Check if the clicked node is the parent of the currently focused node
             const focusedNode = State.nodes.find(n => n.id === State.focusId);
             if (focusedNode && focusedNode.parentIds.includes(nodeObj.id)) {
