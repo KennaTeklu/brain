@@ -14590,12 +14590,47 @@ setTimeout(() => {
 }, 0);
 </script>
 <script>
-    function printQuiz() {
+// ========== ENHANCED PRINT / PDF EXPORT WITH SETTINGS ==========
+(function() {
+    'use strict';
+
+    // ---- Ensure escapeHtml exists (should already be defined globally) ----
+    if (typeof escapeHtml === 'undefined') {
+        window.escapeHtml = function(str) {
+            return String(str).replace(/[&<>]/g, m => m === '&' ? '&amp;' : m === '<' ? '&lt;' : '&gt;');
+        };
+    }
+
+    // ---- Settings defaults ----
+    const DEFAULT_SETTINGS = {
+        fontSize: 12,
+        showExplanations: true,
+        showInstructions: true,
+        twoAnswerSheets: true // true = both quick & detailed, false = only quick
+    };
+
+    // ---- Load saved settings ----
+    function loadSettings() {
+        try {
+            const saved = localStorage.getItem('printSettings');
+            if (saved) return { ...DEFAULT_SETTINGS, ...JSON.parse(saved) };
+        } catch (e) {}
+        return { ...DEFAULT_SETTINGS };
+    }
+
+    function saveSettings(settings) {
+        try {
+            localStorage.setItem('printSettings', JSON.stringify(settings));
+        } catch (e) {}
+    }
+
+    // ---- Generate the exam HTML based on settings ----
+    function generateExamHTML(settings) {
         const q = State.quiz;
         const questions = q.visibleQuestions && q.visibleQuestions.length ? q.visibleQuestions : q.allQuestions;
-        if (!questions || questions.length === 0) { UI.toast('No questions to print.'); return; }
+        if (!questions || questions.length === 0) return '<p style="text-align:center">No questions to print.</p>';
 
-        // Build lineage
+        // ---- Build lineage ----
         let lineage = '';
         const node = State.nodes.find(n => n.id === q.currentNodeId);
         if (node) {
@@ -14610,60 +14645,145 @@ setTimeout(() => {
             lineage = 'Unknown topic';
         }
 
-        // Build question HTML
+        // ---- Build question HTML ----
         let questionsHtml = '';
         questions.forEach((question, idx) => {
-            questionsHtml += `<div class="question"><strong>Q${idx+1}: ${escapeHtml(question.text)}</strong><br><ol>`;
+            questionsHtml += `
+                <div class="question">
+                    <div class="question-text"><strong>Q${idx+1}: ${escapeHtml(question.text)}</strong></div>
+                    <ol class="choices">
+            `;
             question.choices.forEach((choice, cIdx) => {
                 questionsHtml += `<li>${escapeHtml(choice)}</li>`;
             });
             questionsHtml += `</ol></div>`;
         });
 
-        // Build answer sheet: each answer as a letter (A, B, C, D) in order
-        const answerLines = [];
-        questions.forEach((question, idx) => {
-            answerLines.push(`${idx+1}${String.fromCharCode(65 + question.correct)}`);
-        });
-        const answerText = answerLines.join(' ');
+        // ---- Build quick answer sheet (compact letters, rotated 180°) ----
+        const quickAnswers = questions.map((question, idx) =>
+            `${idx+1}${String.fromCharCode(65 + question.correct)}`
+        ).join(''); // No spaces
 
-        const printWindow = window.open('', '_blank');
-        if (!printWindow) { UI.toast('Popup blocked. Please allow popups.'); return; }
+        // ---- Build detailed answer sheet ----
+        let detailedHtml = '';
+        if (settings.twoAnswerSheets) {
+            questions.forEach((question, idx) => {
+                const correctLetter = String.fromCharCode(65 + question.correct);
+                const explanation = settings.showExplanations && question.explanation
+                    ? `<div class="explanation">${escapeHtml(question.explanation)}</div>`
+                    : '';
+                detailedHtml += `
+                    <div class="detailed-answer">
+                        <span class="qnum">${idx+1}.</span> <strong>${escapeHtml(question.text)}</strong><br>
+                        <span class="correct">Correct: ${correctLetter}</span> — ${escapeHtml(question.choices[question.correct])}
+                        ${explanation}
+                    </div>
+                `;
+            });
+        }
 
-        printWindow.document.write(`
-<!DOCTYPE html>
+        // ---- Build full HTML ----
+        return `<!DOCTYPE html>
 <html>
 <head>
-    <title>Quiz Print</title>
+    <title>Exam: ${escapeHtml(node ? node.name : 'Quiz')}</title>
     <style>
-        body { font-family: Arial, sans-serif; margin: 40px; }
-        h1 { text-align: center; }
-        .header { margin-bottom: 20px; }
-        .lineage { font-size: 14px; color: #666; }
-        .questions { margin-top: 20px; }
-        .question { margin-bottom: 20px; }
-        .answers { page-break-before: always; }
-        .answer-sheet {
+        body {
+            font-family: Georgia, 'Times New Roman', serif;
+            margin: 40px auto;
+            max-width: 800px;
+            padding: 20px;
+            color: #000;
+        }
+        .header {
+            border-bottom: 2px solid #000;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+        .header h1 {
+            text-align: center;
+            font-size: 22px;
+            margin: 0;
+        }
+        .lineage {
+            text-align: center;
+            font-size: 14px;
+            color: #333;
+            margin: 5px 0;
+        }
+        .instructions {
+            font-size: 12px;
+            border: 1px solid #000;
+            padding: 10px;
+            margin: 15px 0;
+            background: #f9f9f9;
+        }
+        .question {
+            page-break-inside: avoid;   /* Important: no split question */
+            break-inside: avoid;
+            margin-bottom: 20px;
+        }
+        .question-text {
+            font-size: ${settings.fontSize}pt;
+            line-height: 1.4;
+        }
+        .choices {
+            margin-top: 8px;
+            padding-left: 25px;
+            font-size: ${settings.fontSize}pt;
+        }
+        .choices li {
+            margin-bottom: 4px;
+        }
+        .answersheet {
+            page-break-before: always;
+            margin-top: 40px;
+        }
+        .quick-answer {
             transform: rotate(180deg);
-            font-size: 6px;
-            color: rgba(0,0,0,0.2);
-            letter-spacing: 2px;
+            font-size: 4px;
+            color: rgba(0,0,0,0.15);
+            letter-spacing: 1px;
             text-align: center;
             margin-top: 200px;
+            word-break: break-all;
+        }
+        .detailed-answers {
+            margin-top: 30px;
+            font-size: ${settings.fontSize - 2}pt;
+        }
+        .detailed-answer {
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px dotted #ccc;
+        }
+        .correct {
+            font-weight: bold;
+            color: #2d6a4f;
+        }
+        .explanation {
+            font-style: italic;
+            color: #555;
+            margin-top: 4px;
         }
         .footer {
             position: fixed;
             bottom: 0;
             width: 100%;
             text-align: center;
-            font-size: 10px;
-            color: #999;
-            border-top: 1px solid #ccc;
-            padding: 10px;
+            font-size: 8px;
+            color: #888;
+            border-top: 1px solid #ddd;
+            padding: 4px;
+            background: #fff;
         }
-        .footer a { color: #999; text-decoration: none; }
         @media print {
-            .footer { position: fixed; }
+            .footer {
+                position: fixed;
+            }
+            body {
+                margin: 20px;
+            }
         }
     </style>
 </head>
@@ -14672,29 +14792,181 @@ setTimeout(() => {
         <h1>${escapeHtml(node ? node.name : 'Quiz')}</h1>
         <div class="lineage">${escapeHtml(lineage)}</div>
     </div>
+
+    ${settings.showInstructions ? `
+    <div class="instructions">
+        <strong>Instructions:</strong> Choose the best answer for each question. Write your answers on the answer sheet. Use pencil to allow corrections.
+    </div>` : ''}
+
     <div class="questions">
         ${questionsHtml}
     </div>
-    <div class="answers">
-        <h2>Answer Sheet</h2>
-        <div class="answer-sheet">${answerText}</div>
+
+    <div class="answersheet">
+        <h3 style="text-align:center;">Answer Sheet</h3>
+        <!-- Quick answer (crammed, rotated, tiny, faded) -->
+        <div class="quick-answer">${quickAnswers}</div>
+
+        ${settings.twoAnswerSheets ? `
+        <h3 style="text-align:center; margin-top:40px;">Detailed Answers</h3>
+        <div class="detailed-answers">
+            ${detailedHtml}
+        </div>` : ''}
     </div>
+
     <div class="footer">
-        © 2026 All rights reserved. | <a href="https://brain.try4ever.com" target="_blank">brain.try4ever.com</a>
+        © 2026 All rights reserved · brain.try4ever.com
     </div>
 </body>
-</html>
-`);
-
-        printWindow.document.close();
-        printWindow.focus();
-        setTimeout(() => {
-            printWindow.print();
-        }, 500);
+</html>`;
     }
 
-    // Attach to button
-    document.getElementById('quiz-print-btn')?.addEventListener('click', printQuiz);
+    // ---- Open Print Settings Modal ----
+    function openPrintSettings() {
+        // Create modal if not exists
+        let modal = document.getElementById('print-settings-modal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'print-settings-modal';
+            modal.className = 'modal-bg';
+            modal.style.display = 'flex';
+            modal.style.zIndex = '2000';
+            modal.innerHTML = `
+                <div class="modal-medium" style="max-width:600px; background:rgba(0,0,0,0.85); color:#e2e8f0;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+                        <h3 style="margin:0;">Print / PDF Settings</h3>
+                        <button class="close-modal-btn" id="print-settings-close" style="background:none;border:none;color:#94a3b8;font-size:1.5rem;cursor:pointer;">✕</button>
+                    </div>
+                    <div style="display:flex; flex-direction:column; gap:1rem; margin-bottom:1rem;">
+                        <label style="display:flex; align-items:center; gap:10px;">
+                            Font size:
+                            <input type="range" id="print-font-size" min="10" max="18" value="${currentSettings.fontSize}" step="1" style="flex:1;">
+                            <span id="font-size-value">${currentSettings.fontSize}</span> pt
+                        </label>
+                        <label style="display:flex; align-items:center; gap:10px;">
+                            <input type="checkbox" id="print-show-explanations" ${currentSettings.showExplanations ? 'checked' : ''}>
+                            Show explanations in detailed answer sheet
+                        </label>
+                        <label style="display:flex; align-items:center; gap:10px;">
+                            <input type="checkbox" id="print-show-instructions" ${currentSettings.showInstructions ? 'checked' : ''}>
+                            Show instructions on exam
+                        </label>
+                        <label style="display:flex; align-items:center; gap:10px;">
+                            <input type="checkbox" id="print-two-answer-sheets" ${currentSettings.twoAnswerSheets ? 'checked' : ''}>
+                            Show both quick & detailed answer sheets (if off, only quick)
+                        </label>
+                    </div>
+                    <div style="background:rgba(255,255,255,0.05); border-radius:12px; padding:10px; margin-bottom:1rem;">
+                        <strong style="color:#2dd4bf;">Preview:</strong>
+                        <iframe id="print-preview" style="width:100%; height:300px; border:none; background:white; margin-top:8px; border-radius:8px;"></iframe>
+                    </div>
+                    <div style="display:flex; justify-content:flex-end; gap:10px;">
+                        <button id="print-cancel-btn" class="btn-secondary" style="background:transparent;border:1px solid var(--border);color:#e2e8f0;padding:8px 16px;border-radius:40px;cursor:pointer;">Cancel</button>
+                        <button id="print-now-btn" class="btn-primary" style="background:rgba(45,212,191,0.15);border:1px solid var(--accent);color:var(--accent);padding:8px 20px;border-radius:40px;cursor:pointer;">Print / Save PDF</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        } else {
+            modal.style.display = 'flex';
+            // Update fields with current settings
+            document.getElementById('print-font-size').value = currentSettings.fontSize;
+            document.getElementById('font-size-value').textContent = currentSettings.fontSize;
+            document.getElementById('print-show-explanations').checked = currentSettings.showExplanations;
+            document.getElementById('print-show-instructions').checked = currentSettings.showInstructions;
+            document.getElementById('print-two-answer-sheets').checked = currentSettings.twoAnswerSheets;
+        }
+
+        // Update preview
+        function updatePreview() {
+            const fontSize = parseInt(document.getElementById('print-font-size').value);
+            const showExpl = document.getElementById('print-show-explanations').checked;
+            const showInstr = document.getElementById('print-show-instructions').checked;
+            const twoSheets = document.getElementById('print-two-answer-sheets').checked;
+
+            const settings = {
+                fontSize,
+                showExplanations: showExpl,
+                showInstructions: showInstr,
+                twoAnswerSheets: twoSheets
+            };
+            const html = generateExamHTML(settings);
+            const iframe = document.getElementById('print-preview');
+            iframe.srcdoc = html; // Using srcdoc for local preview
+        }
+
+        // Bind events
+        const closeBtn = document.getElementById('print-settings-close');
+        const cancelBtn = document.getElementById('print-cancel-btn');
+        const printBtn = document.getElementById('print-now-btn');
+        const fontSizeInput = document.getElementById('print-font-size');
+        const showExplToggle = document.getElementById('print-show-explanations');
+        const showInstrToggle = document.getElementById('print-show-instructions');
+        const twoSheetsToggle = document.getElementById('print-two-answer-sheets');
+
+        // Update preview on any change
+        fontSizeInput.oninput = () => {
+            document.getElementById('font-size-value').textContent = fontSizeInput.value;
+            updatePreview();
+        };
+        showExplToggle.onchange = updatePreview;
+        showInstrToggle.onchange = updatePreview;
+        twoSheetsToggle.onchange = updatePreview;
+
+        // Close handlers
+        function closeModal() {
+            modal.style.display = 'none';
+            // Save settings
+            const settings = {
+                fontSize: parseInt(fontSizeInput.value),
+                showExplanations: showExplToggle.checked,
+                showInstructions: showInstrToggle.checked,
+                twoAnswerSheets: twoSheetsToggle.checked
+            };
+            saveSettings(settings);
+        }
+        closeBtn.onclick = closeModal;
+        cancelBtn.onclick = closeModal;
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) closeModal();
+        });
+
+        // Print button
+        printBtn.onclick = () => {
+            const settings = {
+                fontSize: parseInt(fontSizeInput.value),
+                showExplanations: showExplToggle.checked,
+                showInstructions: showInstrToggle.checked,
+                twoAnswerSheets: twoSheetsToggle.checked
+            };
+            saveSettings(settings);
+            const html = generateExamHTML(settings);
+
+            // Open a new window for printing
+            const printWindow = window.open('', '_blank');
+            if (!printWindow) {
+                UI.toast('Popup blocked. Please allow popups.');
+                return;
+            }
+            printWindow.document.write(html);
+            printWindow.document.close();
+            printWindow.focus();
+            setTimeout(() => {
+                printWindow.print();
+            }, 300);
+            closeModal();
+        };
+
+        // Initial preview
+        updatePreview();
+    }
+
+    // Load saved settings
+    let currentSettings = loadSettings();
+
+    // Replace old print button handler
+    document.getElementById('quiz-print-btn')?.addEventListener('click', openPrintSettings);
+})();
 </script>
 </body>
 </html>
