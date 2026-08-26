@@ -6030,7 +6030,7 @@ this.renderer.domElement.addEventListener('dblclick', (e) => {
     if (mesh) {
         const nodeObj = this.nodeObjects.find(n => n.mesh === mesh);
         if (nodeObj && nodeObj.id !== 'root') {
-            // Mark as educated after double‑click (stop the hover hint)
+            // ✅ NEW: Mark as educated after double‑click (stop the hover hint)
             if (!doubleTapEducated) {
                 doubleTapEducated = true;
                 localStorage.setItem('doubleTapEducated', 'true');
