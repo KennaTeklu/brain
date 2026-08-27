@@ -14595,7 +14595,7 @@ setTimeout(() => {
 }, 0);
 </script>
 <script>
-// ========== ROBUST PRINT / PDF EXPORT ==========
+// ========== MAGNIFICENT PRINT / PDF EXPORT ==========
 (function() {
     'use strict';
 
@@ -14616,7 +14616,10 @@ setTimeout(() => {
         fontSize: 12,
         showExplanations: true,
         showInstructions: true,
-        twoAnswerSheets: true
+        twoAnswerSheets: true,
+        showStudentInfo: false,
+        showQuestionNumbers: true,
+        showAnswerKey: true
     };
 
     function loadSettings() {
@@ -14635,10 +14638,10 @@ setTimeout(() => {
     // ---- Generate the full exam HTML ----
     function generateExamHTML(settings) {
         const q = window.State?.quiz;
-        if (!q) return '<p style="color:red">Quiz state not available. Open a quiz first.</p>';
+        if (!q) return '<p style="color:red; font-family: Arial, sans-serif;">Quiz state not available. Open a quiz first.</p>';
 
         const questions = (q.visibleQuestions && q.visibleQuestions.length) ? q.visibleQuestions : q.allQuestions;
-        if (!questions || questions.length === 0) return '<p style="color:red">No questions to print.</p>';
+        if (!questions || questions.length === 0) return '<p style="color:red; font-family: Arial, sans-serif;">No questions to print.</p>';
 
         // Lineage
         let lineage = '';
@@ -14658,33 +14661,49 @@ setTimeout(() => {
         // Questions HTML
         let questionsHtml = '';
         questions.forEach((question, idx) => {
+            const qText = question.text || question.question || 'No question text';
+            const qNum = settings.showQuestionNumbers ? `<strong>Q${idx + 1}:</strong> ` : '';
             questionsHtml += `
                 <div class="question">
-                    <div class="question-text"><strong>Q${idx + 1}: ${window.escapeHtml(question.text)}</strong></div>
+                    <div class="question-text">${qNum}${window.escapeHtml(qText)}</div>
                     <ol class="choices">
                         ${question.choices.map(c => `<li>${window.escapeHtml(c)}</li>`).join('')}
                     </ol>
                 </div>`;
         });
 
-        // Quick answer sheet (crammed, rotated, faded)
-        const quickAnswers = questions.map((q, i) => `${i + 1}${String.fromCharCode(65 + q.correct)}`).join('');
+        // Quick answer sheet (crammed, rotated, faded) – only if answer key is enabled
+        let quickAnswers = '';
+        if (settings.showAnswerKey) {
+            quickAnswers = questions.map((q, i) => `${i + 1}${String.fromCharCode(65 + q.correct)}`).join('');
+        }
 
-        // Detailed answer sheet
+        // Detailed answer sheet – only if two sheets enabled
         let detailedHtml = '';
-        if (settings.twoAnswerSheets) {
+        if (settings.twoAnswerSheets && settings.showAnswerKey) {
             questions.forEach((question, idx) => {
+                const qText = question.text || question.question || 'No question text';
                 const letter = String.fromCharCode(65 + question.correct);
                 const explanation = (settings.showExplanations && question.explanation)
                     ? `<div class="explanation">${window.escapeHtml(question.explanation)}</div>`
                     : '';
                 detailedHtml += `
                     <div class="detailed-answer">
-                        <span class="qnum">${idx + 1}.</span> <strong>${window.escapeHtml(question.text)}</strong><br>
+                        <span class="qnum">${idx + 1}.</span> <strong>${window.escapeHtml(qText)}</strong><br>
                         <span class="correct">Correct: ${letter}</span> — ${window.escapeHtml(question.choices[question.correct])}
                         ${explanation}
                     </div>`;
             });
+        }
+
+        // Student info optional
+        let studentInfo = '';
+        if (settings.showStudentInfo) {
+            studentInfo = `
+                <div class="student-info">
+                    <div><span>Name:</span> _________________________</div>
+                    <div><span>Date:</span> _________________________</div>
+                </div>`;
         }
 
         // Full HTML
@@ -14693,23 +14712,112 @@ setTimeout(() => {
 <head>
     <title>Exam: ${window.escapeHtml(node ? node.name : 'Quiz')}</title>
     <style>
-        body { font-family: Georgia, 'Times New Roman', serif; margin: 40px auto; max-width: 800px; padding: 20px; color: #000; }
-        .header { border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 20px; }
-        .header h1 { text-align: center; font-size: 22px; margin: 0; }
-        .lineage { text-align: center; font-size: 14px; color: #333; margin: 5px 0; }
-        .instructions { font-size: 12px; border: 1px solid #000; padding: 10px; margin: 15px 0; background: #f9f9f9; }
-        .question { page-break-inside: avoid; break-inside: avoid; margin-bottom: 20px; }
-        .question-text { font-size: ${settings.fontSize}pt; line-height: 1.4; }
-        .choices { margin-top: 8px; padding-left: 25px; font-size: ${settings.fontSize}pt; }
-        .choices li { margin-bottom: 4px; }
-        .answersheet { page-break-before: always; margin-top: 40px; }
-        .quick-answer { transform: rotate(180deg); font-size: 4px; color: rgba(0,0,0,0.15); letter-spacing: 1px; text-align: center; margin-top: 200px; word-break: break-all; }
-        .detailed-answers { margin-top: 30px; font-size: ${settings.fontSize - 2}pt; }
-        .detailed-answer { margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px dotted #ccc; }
-        .correct { font-weight: bold; color: #2d6a4f; }
-        .explanation { font-style: italic; color: #555; margin-top: 4px; }
-        .footer { position: fixed; bottom: 0; width: 100%; text-align: center; font-size: 8px; color: #888; border-top: 1px solid #ddd; padding: 4px; background: #fff; }
-        @media print { .footer { position: fixed; } body { margin: 20px; } }
+        * { box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
+            margin: 30px auto;
+            max-width: 850px;
+            padding: 20px;
+            color: #000;
+            line-height: 1.6;
+        }
+        .header {
+            border-bottom: 2px solid #000;
+            padding-bottom: 12px;
+            margin-bottom: 24px;
+        }
+        .header h1 {
+            text-align: center;
+            font-size: 24px;
+            margin: 0;
+            font-weight: 700;
+        }
+        .lineage {
+            text-align: center;
+            font-size: 14px;
+            color: #444;
+            margin: 5px 0;
+        }
+        .instructions {
+            font-size: 13px;
+            border: 1px solid #000;
+            padding: 12px;
+            margin: 20px 0;
+            background: #f9f9f9;
+            border-radius: 4px;
+        }
+        .student-info {
+            display: flex;
+            gap: 40px;
+            margin: 16px 0;
+            font-size: 14px;
+        }
+        .student-info span { font-weight: 600; }
+        .question {
+            page-break-inside: avoid;
+            break-inside: avoid;
+            margin-bottom: 24px;
+        }
+        .question-text {
+            font-size: ${settings.fontSize}pt;
+            line-height: 1.5;
+            font-weight: 600;
+        }
+        .choices {
+            margin-top: 8px;
+            padding-left: 25px;
+            font-size: ${settings.fontSize}pt;
+        }
+        .choices li {
+            margin-bottom: 5px;
+        }
+        .answersheet {
+            page-break-before: always;
+            margin-top: 40px;
+        }
+        .quick-answer {
+            transform: rotate(180deg);
+            font-size: 4px;
+            color: rgba(0,0,0,0.15);
+            letter-spacing: 1px;
+            text-align: center;
+            margin-top: 200px;
+            word-break: break-all;
+        }
+        .detailed-answers {
+            margin-top: 30px;
+            font-size: ${settings.fontSize - 2}pt;
+        }
+        .detailed-answer {
+            margin-bottom: 14px;
+            padding-bottom: 10px;
+            border-bottom: 1px dotted #ccc;
+        }
+        .correct {
+            font-weight: bold;
+            color: #1e7e34;
+        }
+        .explanation {
+            font-style: italic;
+            color: #555;
+            margin-top: 5px;
+            font-size: 0.95em;
+        }
+        .footer {
+            position: fixed;
+            bottom: 0;
+            width: 100%;
+            text-align: center;
+            font-size: 8px;
+            color: #888;
+            border-top: 1px solid #ddd;
+            padding: 4px;
+            background: #fff;
+        }
+        @media print {
+            .footer { position: fixed; }
+            body { margin: 20px; }
+        }
     </style>
 </head>
 <body>
@@ -14717,18 +14825,20 @@ setTimeout(() => {
         <h1>${window.escapeHtml(node ? node.name : 'Quiz')}</h1>
         <div class="lineage">${window.escapeHtml(lineage)}</div>
     </div>
+    ${studentInfo}
     ${settings.showInstructions ? `
     <div class="instructions">
         <strong>Instructions:</strong> Choose the best answer for each question. Write your answers on the answer sheet. Use pencil to allow corrections.
     </div>` : ''}
     <div class="questions">${questionsHtml}</div>
+    ${settings.showAnswerKey ? `
     <div class="answersheet">
         <h3 style="text-align:center;">Answer Sheet</h3>
-        <div class="quick-answer">${quickAnswers}</div>
+        ${settings.twoAnswerSheets ? `<div class="quick-answer">${quickAnswers}</div>` : ''}
         ${settings.twoAnswerSheets ? `
         <h3 style="text-align:center; margin-top:40px;">Detailed Answers</h3>
         <div class="detailed-answers">${detailedHtml}</div>` : ''}
-    </div>
+    </div>` : ''}
     <div class="footer">
         © 2026 All rights reserved · brain.try4ever.com
     </div>
@@ -14760,7 +14870,7 @@ setTimeout(() => {
         }, 1000);
     }
 
-    // ---- Show settings modal ----
+    // ---- Show settings modal (organized, polished) ----
     function openPrintSettings() {
         console.log('Opening print settings...');
         const current = loadSettings();
@@ -14770,37 +14880,65 @@ setTimeout(() => {
             modal.id = 'print-settings-modal';
             modal.className = 'modal-bg';
             modal.style.display = 'flex';
-            modal.style.zIndex = '100000';   // <-- FIXED: above quiz (9999)
+            modal.style.zIndex = '100000';   // above quiz (9999)
             modal.innerHTML = `
-                <div class="modal-medium" style="max-width:600px; background:rgba(0,0,0,0.85); color:#e2e8f0; padding:24px;">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
-                        <h3 style="margin:0;">Print / PDF Settings</h3>
-                        <button class="close-modal-btn" id="print-settings-close" style="background:none;border:none;color:#94a3b8;font-size:1.5rem;cursor:pointer;">✕</button>
+                <div class="modal-medium" style="max-width:600px; width:95vw; max-height:85vh; background:rgba(0,0,0,0.9); color:#e2e8f0; padding:24px; border-radius:16px; overflow-y:auto; box-shadow:0 8px 32px rgba(0,0,0,0.6);">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:12px;">
+                        <h3 style="margin:0; font-size:1.2rem; font-weight:600;">Print / PDF Settings</h3>
+                        <button class="close-modal-btn" id="print-settings-close" style="background:none;border:none;color:#94a3b8;font-size:1.5rem;cursor:pointer;line-height:1;">✕</button>
                     </div>
-                    <div style="display:flex; flex-direction:column; gap:1rem; margin-bottom:1rem;">
-                        <label style="display:flex; align-items:center; gap:10px;">
-                            Font size:
+                    
+                    <!-- Layout Section -->
+                    <div style="margin-bottom:20px;">
+                        <div style="font-size:0.8rem; text-transform:uppercase; color:#64748b; margin-bottom:8px; letter-spacing:0.5px;">Layout</div>
+                        <label style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
+                            <span style="flex:0 0 120px; font-size:0.9rem;">Font size:</span>
                             <input type="range" id="print-font-size" min="10" max="18" value="${current.fontSize}" step="1" style="flex:1;">
-                            <span id="font-size-value">${current.fontSize}</span> pt
-                        </label>
-                        <label style="display:flex; align-items:center; gap:10px;">
-                            <input type="checkbox" id="print-show-explanations" ${current.showExplanations ? 'checked' : ''}>
-                            Show explanations in detailed answer sheet
-                        </label>
-                        <label style="display:flex; align-items:center; gap:10px;">
-                            <input type="checkbox" id="print-show-instructions" ${current.showInstructions ? 'checked' : ''}>
-                            Show instructions on exam
-                        </label>
-                        <label style="display:flex; align-items:center; gap:10px;">
-                            <input type="checkbox" id="print-two-answer-sheets" ${current.twoAnswerSheets ? 'checked' : ''}>
-                            Show both quick & detailed answer sheets
+                            <span id="font-size-value" style="width:30px; text-align:right;">${current.fontSize} pt</span>
                         </label>
                     </div>
+
+                    <!-- Content Section -->
+                    <div style="margin-bottom:20px;">
+                        <div style="font-size:0.8rem; text-transform:uppercase; color:#64748b; margin-bottom:8px; letter-spacing:0.5px;">Content</div>
+                        <label style="display:flex; align-items:center; gap:12px; margin-bottom:8px; cursor:pointer;">
+                            <input type="checkbox" id="print-show-explanations" ${current.showExplanations ? 'checked' : ''} style="width:16px; height:16px;">
+                            <span>Include explanations in detailed answers</span>
+                        </label>
+                        <label style="display:flex; align-items:center; gap:12px; margin-bottom:8px; cursor:pointer;">
+                            <input type="checkbox" id="print-show-instructions" ${current.showInstructions ? 'checked' : ''} style="width:16px; height:16px;">
+                            <span>Show instructions on exam</span>
+                        </label>
+                        <label style="display:flex; align-items:center; gap:12px; margin-bottom:8px; cursor:pointer;">
+                            <input type="checkbox" id="print-show-question-nums" ${current.showQuestionNumbers ? 'checked' : ''} style="width:16px; height:16px;">
+                            <span>Show question numbers</span>
+                        </label>
+                        <label style="display:flex; align-items:center; gap:12px; margin-bottom:8px; cursor:pointer;">
+                            <input type="checkbox" id="print-show-student-info" ${current.showStudentInfo ? 'checked' : ''} style="width:16px; height:16px;">
+                            <span>Include student name/date fields</span>
+                        </label>
+                    </div>
+
+                    <!-- Answer Sheets Section -->
+                    <div style="margin-bottom:20px;">
+                        <div style="font-size:0.8rem; text-transform:uppercase; color:#64748b; margin-bottom:8px; letter-spacing:0.5px;">Answer Sheets</div>
+                        <label style="display:flex; align-items:center; gap:12px; margin-bottom:8px; cursor:pointer;">
+                            <input type="checkbox" id="print-show-answer-key" ${current.showAnswerKey ? 'checked' : ''} style="width:16px; height:16px;">
+                            <span>Show answer key (quick + detailed)</span>
+                        </label>
+                        <label style="display:flex; align-items:center; gap:12px; margin-bottom:8px; cursor:pointer;">
+                            <input type="checkbox" id="print-two-answer-sheets" ${current.twoAnswerSheets ? 'checked' : ''} style="width:16px; height:16px;">
+                            <span>Show both quick & detailed answer sheets</span>
+                        </label>
+                    </div>
+
+                    <!-- Preview -->
                     <div style="background:rgba(255,255,255,0.05); border-radius:12px; padding:10px; margin-bottom:1rem;">
-                        <strong style="color:#2dd4bf;">Preview:</strong>
-                        <iframe id="print-preview" style="width:100%; height:300px; border:none; background:white; margin-top:8px; border-radius:8px;"></iframe>
+                        <strong style="color:#2dd4bf; display:block; margin-bottom:8px;">Live Preview</strong>
+                        <iframe id="print-preview" style="width:100%; height:300px; border:none; background:white; border-radius:8px;"></iframe>
                     </div>
-                    <div style="display:flex; justify-content:flex-end; gap:10px;">
+
+                    <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:1rem;">
                         <button id="print-cancel-btn" class="btn-secondary" style="background:transparent;border:1px solid var(--border);color:#e2e8f0;padding:8px 16px;border-radius:40px;cursor:pointer;">Cancel</button>
                         <button id="print-now-btn" class="btn-primary" style="background:rgba(45,212,191,0.15);border:1px solid var(--accent);color:var(--accent);padding:8px 20px;border-radius:40px;cursor:pointer;">Print / Save PDF</button>
                     </div>
@@ -14810,9 +14948,12 @@ setTimeout(() => {
         } else {
             modal.style.display = 'flex';
             document.getElementById('print-font-size').value = current.fontSize;
-            document.getElementById('font-size-value').textContent = current.fontSize;
+            document.getElementById('font-size-value').textContent = current.fontSize + ' pt';
             document.getElementById('print-show-explanations').checked = current.showExplanations;
             document.getElementById('print-show-instructions').checked = current.showInstructions;
+            document.getElementById('print-show-question-nums').checked = current.showQuestionNumbers;
+            document.getElementById('print-show-student-info').checked = current.showStudentInfo;
+            document.getElementById('print-show-answer-key').checked = current.showAnswerKey;
             document.getElementById('print-two-answer-sheets').checked = current.twoAnswerSheets;
         }
 
@@ -14822,6 +14963,9 @@ setTimeout(() => {
                 fontSize: parseInt(document.getElementById('print-font-size').value),
                 showExplanations: document.getElementById('print-show-explanations').checked,
                 showInstructions: document.getElementById('print-show-instructions').checked,
+                showQuestionNumbers: document.getElementById('print-show-question-nums').checked,
+                showStudentInfo: document.getElementById('print-show-student-info').checked,
+                showAnswerKey: document.getElementById('print-show-answer-key').checked,
                 twoAnswerSheets: document.getElementById('print-two-answer-sheets').checked
             };
             const html = generateExamHTML(settings);
@@ -14835,14 +14979,20 @@ setTimeout(() => {
         const fontSize = document.getElementById('print-font-size');
         const showExpl = document.getElementById('print-show-explanations');
         const showInstr = document.getElementById('print-show-instructions');
+        const showQNums = document.getElementById('print-show-question-nums');
+        const showStudentInfo = document.getElementById('print-show-student-info');
+        const showAnswerKey = document.getElementById('print-show-answer-key');
         const twoSheets = document.getElementById('print-two-answer-sheets');
 
         fontSize.oninput = () => {
-            document.getElementById('font-size-value').textContent = fontSize.value;
+            document.getElementById('font-size-value').textContent = fontSize.value + ' pt';
             updatePreview();
         };
         showExpl.onchange = updatePreview;
         showInstr.onchange = updatePreview;
+        showQNums.onchange = updatePreview;
+        showStudentInfo.onchange = updatePreview;
+        showAnswerKey.onchange = updatePreview;
         twoSheets.onchange = updatePreview;
 
         function closeModal() {
@@ -14851,6 +15001,9 @@ setTimeout(() => {
                 fontSize: parseInt(fontSize.value),
                 showExplanations: showExpl.checked,
                 showInstructions: showInstr.checked,
+                showQuestionNumbers: showQNums.checked,
+                showStudentInfo: showStudentInfo.checked,
+                showAnswerKey: showAnswerKey.checked,
                 twoAnswerSheets: twoSheets.checked
             });
         }
@@ -14865,6 +15018,9 @@ setTimeout(() => {
                 fontSize: parseInt(fontSize.value),
                 showExplanations: showExpl.checked,
                 showInstructions: showInstr.checked,
+                showQuestionNumbers: showQNums.checked,
+                showStudentInfo: showStudentInfo.checked,
+                showAnswerKey: showAnswerKey.checked,
                 twoAnswerSheets: twoSheets.checked
             };
             saveSettings(settings);
@@ -14885,7 +15041,7 @@ setTimeout(() => {
     });
 
     // ---- Debug ----
-    console.log('Print script loaded successfully.');
+    console.log('Magnificent print script loaded.');
 })();
 </script>
 </body>
