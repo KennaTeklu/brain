@@ -11865,19 +11865,11 @@ function validateHTML(html) {
                 return;
             }
             // Pass the JSON data to the unified print modal
-            if (typeof openPrintSettings === 'function') {
-                openPrintSettings('cheatsheet', JSON.stringify(jsonData));
-            } else {
-                UI.toast('Print system not ready.');
-            }
+            openPrintSettings('cheatsheet', JSON.stringify(jsonData));
         } else {
-            // For Learn Detail mode, print the HTML directly
+            // For Learn Detail mode, pass the HTML to the unified print modal
             if (currentGeneratedHTML) {
-                if (typeof openPrintSettings === 'function') {
-                    openPrintSettings('quiz', currentGeneratedHTML);
-                } else {
-                    printHTML(currentGeneratedHTML);
-                }
+                openPrintSettings('quiz', currentGeneratedHTML);
             } else {
                 UI.toast('No content to print.');
             }
@@ -15368,6 +15360,10 @@ function saveSettings(s, key = 'printSettings') {
             }
         }
     });
+
+    // ---- Expose functions globally for other scripts ----
+    window.openPrintSettings = openPrintSettings;
+    window.printHTML = printHTML;
 
     // ---- Debug ----
     console.log('Magnificent print script loaded.');
