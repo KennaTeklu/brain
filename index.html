@@ -11283,7 +11283,48 @@ document.addEventListener('drop', (e) => {
     let currentNodeId = null;
     let currentGeneratedHTML = '';
     let learnMode = 'detail'; // Default to 'detail' mode to prevent undefined errors
+    window.learnMode = learnMode; // Expose globally for other scripts
     const recentLessonsKey = 'learn_recent_htmls_v2';
+
+    // ---- MODE SELECTION HANDLERS (must be bound after modal exists) ----
+    function bindModeButtons() {
+        const detailBtn = document.getElementById('learn-mode-detail');
+        const cheatsheetBtn = document.getElementById('learn-mode-cheatsheet');
+        
+        if (detailBtn) {
+            detailBtn.addEventListener('click', function() {
+                learnMode = 'detail';
+                window.learnMode = 'detail';
+                document.getElementById('learn-step0').style.display = 'none';
+                document.getElementById('learn-step1').style.display = 'block';
+                const node = State.nodes.find(n => n.id === currentNodeId);
+                if (node) {
+                    const prompt = buildPrompt(node);
+                    document.getElementById('learn-prompt-text').innerText = prompt;
+                }
+            });
+        }
+        
+        if (cheatsheetBtn) {
+            cheatsheetBtn.addEventListener('click', function() {
+                learnMode = 'cheatsheet';
+                window.learnMode = 'cheatsheet';
+                document.getElementById('learn-step0').style.display = 'none';
+                document.getElementById('learn-step1').style.display = 'block';
+                const node = State.nodes.find(n => n.id === currentNodeId);
+                if (node) {
+                    const level = window._learnLevel || 'basic';
+                    const prompt = typeof window.buildAdvancedPrompt === 'function' 
+                        ? window.buildAdvancedPrompt(node, level) 
+                        : buildPrompt(node);
+                    document.getElementById('learn-prompt-text').innerText = prompt;
+                }
+            });
+        }
+    }
+
+    // Bind the buttons immediately (modal exists now)
+    bindModeButtons();
         // Mode selection handlers
         document.getElementById('learn-mode-detail').addEventListener('click', function() {
             learnMode = 'detail';
