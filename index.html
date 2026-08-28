@@ -11212,13 +11212,23 @@ document.addEventListener('drop', (e) => {
             </div>
             <div id="learn-wizard-steps" style="padding: 1rem;">
                 <div style="display: flex; gap: 8px; justify-content: center; margin-bottom: 1.5rem;">
-                    <span class="step-badge active" data-step="1">1. Copy Prompt</span>
+                    <span class="step-badge" data-step="0">0. Mode</span>
+                    <span>→</span>
+                    <span class="step-badge" data-step="1">1. Copy Prompt</span>
                     <span>→</span>
                     <span class="step-badge" data-step="2">2. Paste & Validate</span>
                     <span>→</span>
-                    <span class="step-badge" data-step="3">3. Display Lesson</span>
+                    <span class="step-badge" data-step="3">3. Preview</span>
                 </div>
-                <div id="learn-step1" class="guide-step">
+                <!-- Step 0 – Mode Selection -->
+                <div id="learn-step0" class="guide-step" style="display: none;">
+                    <h4>Choose your learning format</h4>
+                    <div style="display: flex; gap: 20px; justify-content: center; margin: 20px 0;">
+                        <button id="learn-mode-detail" class="btn-primary" style="padding: 20px 40px; font-size: 1.2rem;">📘 Learn Detail</button>
+                        <button id="learn-mode-cheatsheet" class="btn-primary" style="padding: 20px 40px; font-size: 1.2rem;">📋 Cheatsheet</button>
+                    </div>
+                </div>
+                <div id="learn-step1" class="guide-step" style="display: none;">
                     <h4>Step 1: Copy this prompt to your AI</h4>
                     <div class="guide-prompt" id="learn-prompt-text" style="background: #0f172a; padding: 1rem; border-radius: 12px; font-family: monospace; font-size: 0.8rem; white-space: pre-wrap; max-height: 300px; overflow-y: auto;"></div>
                     <button id="learn-copy-prompt-btn" class="btn-secondary" style="margin-top: 0.5rem;">📋 Copy Prompt</button>
@@ -11239,7 +11249,7 @@ document.addEventListener('drop', (e) => {
                     </div>
                 </div>
                 <div id="learn-step2" class="guide-step" style="display: none;">
-                    <h4>Step 2: Paste the AI‑generated HTML</h4>
+                    <h4>Step 2: Paste the AI‑generated content</h4>
                     <textarea id="learn-html-input" rows="12" style="width:100%; background: rgba(0,0,0,0.4); border: 1px solid var(--border); border-radius: 8px; padding: 8px; font-family: monospace;"></textarea>
                     <div style="margin-top: 0.5rem; display: flex; gap: 8px; align-items: center;">
                         <span style="font-size:0.8rem;">📋 Recent Lessons:</span>
@@ -15277,6 +15287,26 @@ function saveSettings(s, key = 'printSettings') {
             // 1. Store mode and content globally for the print button
             window._printMode = type;
             window._printContent = contentHTML;
+            // Safety: ensure all generator functions exist (fallback to no-op)
+            if (typeof generateCheatsheetPrintHTML === 'undefined') {
+                console.warn('Cheatsheet generator not loaded yet.');
+                // Define a fallback that returns an error message
+                window.generateCheatsheetPrintHTML = function() {
+                    return '<p style="color:red;">Cheatsheet generator not available. Please reload.</p>';
+                };
+            }
+            if (typeof generateLearnPrintHTML === 'undefined') {
+                console.warn('Learn Detail generator not loaded yet.');
+                window.generateLearnPrintHTML = function() {
+                    return '<p style="color:red;">Learn Detail generator not available. Please reload.</p>';
+                };
+            }
+            if (typeof generateAdvancedQuizPrint === 'undefined') {
+                console.warn('Advanced Quiz generator not loaded yet.');
+                window.generateAdvancedQuizPrint = function() {
+                    return '<p style="color:red;">Advanced Quiz generator not available. Please reload.</p>';
+                };
+            }
 
             // 2. Use separate localStorage keys to avoid conflicts
             const settingsKey = type === 'cheatsheet' ? 'cheatsheetSettings' : 'printSettings';
