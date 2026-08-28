@@ -3524,6 +3524,10 @@ tr { break-inside: avoid; }
                 <input type="checkbox" id="show-all-labels-toggle">
                 <span>Always show node labels (performance heavy)</span>
             </label>
+            <label class="toggle-setting">
+                <input type="checkbox" id="fullscreen-toggle">
+                <span>Enable Auto Fullscreen (on interaction)</span>
+            </label>
             <div style="margin-top: 8px;">
                 <label style="display: block; margin-bottom: 8px;">Graph Zoom Level: <span id="zoom-value-display">2.0</span></label>
                 <input type="range" id="graph-zoom-slider" min="1.0" max="4.0" step="0.1" value="2.0">
@@ -5222,6 +5226,7 @@ const Graph3D = {
     scene: null, camera: null, renderer: null, controls: null,
     spheres: new Map(), lines: new Map(),
     sim: null, animationId: null, nodeObjects: [],
+    lastNodesHash: null,
 
     init() {
 
@@ -6373,6 +6378,15 @@ updateNodeColor: function(nodeId, newUnderstanding) {
     mesh.material.color.set(color);
     mesh.material.emissive.set(color);
 },
+updateAllNodeColors() {
+    for (let [id, mesh] of this.spheres) {
+        const node = State.nodes.find(n => n.id === id);
+        if (!node) continue;
+        const color = MathCore.getColor(node.understanding);
+        mesh.material.color.set(color);
+        mesh.material.emissive.set(color);
+    }
+},
 
     fitToScreen(animate = true) {
         if (this.nodeObjects.length === 0) return;
@@ -6745,7 +6759,17 @@ actionPanel.style.flex = '1';
 	if (actionPanel.style.display === 'flex') {
         actionPanel.style.flex = '1';
     }
+    // Optimization: In full tree view, if node structure unchanged, skip rebuild
+    const nodeHash = State.nodes.map(n => n.id).sort().join('|');
+    if (State.solarViewEnabled === true && Graph3D.lastNodesHash === nodeHash) {
+        Graph3D.updateAllNodeColors();
+        Graph3D.fitToScreen();
+        UIPersistence.saveNav();
+        return;
+    }
+
     await Graph3D.buildFromState();
+    Graph3D.lastNodesHash = nodeHash;
     Graph3D.updateRootColor();
     Graph3D.fitToScreen();
     UIPersistence.saveNav();
@@ -8714,7 +8738,23 @@ window.addEventListener('load', async () => {
         else document.body.classList.remove('colorblind-mode');
         Core.refresh();
     });
-    
+ // Fullscreen preference toggle
+const fullscreenToggle = document.getElementById('fullscreen-toggle');
+if (fullscreenToggle) {
+    // Initialize checkbox state from saved preference
+    fullscreenToggle.checked = (window.__fullscreenPref.get() === 'always');
+    fullscreenToggle.addEventListener('change', (e) => {
+        if (e.target.checked) {
+            window.__fullscreenPref.set('always');
+            // Optionally request fullscreen immediately
+            window.__fullscreenPref.request();
+        } else {
+            window.__fullscreenPref.set('never');
+            // Exit fullscreen if active
+            window.__fullscreenPref.exit();
+        }
+    });
+}   
     // Show all labels toggle
     let showAllLabels = false;
     const labelsToggle = document.getElementById('show-all-labels-toggle');
@@ -12338,135 +12378,99 @@ function validateHTML(html) {
     if (typeof Core !== 'undefined') window.Core = Core;
 </script>
 <script>
+// Fullscreen Manager – user controlled
 (function() {
-    // ---- STATE ----
-    const state = {
-        enabled: false,
-        dismissedCount: 0,
-        lastDismissal: 0,
-        userPreference: localStorage.getItem('fullscreenPreference') || 'ask', // 'always', 'never', 'ask'
-        cooldownActive: false
-    };
+    const PREF_KEY = 'fullscreenPreference';
+    const EXIT_THRESHOLD = 3000; // 3 seconds
 
-    // ---- HELPERS ----
+    let userPreference = localStorage.getItem(PREF_KEY) || 'ask'; // 'always', 'never', 'ask'
+    let dismissTimer = null;
+    let fullscreenActive = false;
+
     function isFullscreen() {
         return !!(document.fullscreenElement || document.webkitFullscreenElement);
     }
 
-    function shouldRequest() {
-        // If already fullscreen or cooldown active, don't try
-        if (isFullscreen() || state.cooldownActive) return false;
-
-        // Respect user preference
-        if (state.userPreference === 'never') return false;
-        if (state.userPreference === 'always') return true;
-
-        // If user dismissed more than 2 times within 5 minutes, enter cooldown
-        if (state.dismissedCount > 2 && (Date.now() - state.lastDismissal < 300000)) {
-            state.cooldownActive = true;
-            setTimeout(() => {
-                state.cooldownActive = false;
-                state.dismissedCount = 0;
-            }, 300000); // 5 minutes cooldown
-            return false;
-        }
-
-        // Only trigger on high‑intent actions – not on scroll, resize, or focus
-        // The actual trigger will be handled by specific events below
-        return true;
+function requestFullscreen() {
+    const elem = document.documentElement;
+    const method = elem.requestFullscreen || elem.webkitRequestFullscreen || elem.msRequestFullscreen;
+    if (method) {
+        method.call(elem).then(() => {
+            fullscreenActive = true;
+            // Start exit timer to detect quick exit
+            clearTimeout(dismissTimer);
+            dismissTimer = setTimeout(() => {
+                if (!isFullscreen()) {
+                    // User exited within threshold – disable preference
+                    setPreference('never');
+                    console.log('Fullscreen preference disabled due to quick exit.');
+                    // Show a short notification
+                    if (typeof UI !== 'undefined' && UI.toast) {
+                        UI.toast('Fullscreen turned off. You can re‑enable it in Settings.');
+                    } else if (typeof Swal !== 'undefined') {
+                        Swal.fire({
+                            title: 'Fullscreen off',
+                            text: 'Turned off automatically. Enable in Settings if wanted.',
+                            icon: 'info',
+                            toast: true,
+                            position: 'top-end',
+                            timer: 3000,
+                            timerProgressBar: true,
+                            showConfirmButton: false
+                        });
+                    }
+                }
+            }, EXIT_THRESHOLD);
+        }).catch(() => {});
     }
-
-    function requestFullscreen() {
-        if (!shouldRequest()) return;
-        const elem = document.documentElement;
-        const method = elem.requestFullscreen ||
-                       elem.webkitRequestFullscreen ||
-                       elem.msRequestFullscreen;
-        if (method) {
-            method.call(elem)
-                .then(() => {
-                    state.enabled = true;
-                })
-                .catch(() => {
-                    // If blocked, treat as a dismissal – increase count
-                    state.dismissedCount++;
-                    state.lastDismissal = Date.now();
-                });
-        }
-    }
-
+}
     function exitFullscreen() {
-        if (document.exitFullscreen) {
-            document.exitFullscreen();
-        } else if (document.webkitExitFullscreen) {
-            document.webkitExitFullscreen();
-        }
+        if (document.exitFullscreen) document.exitFullscreen();
+        else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
     }
 
-    // ---- RESET ON EXIT ----
-    function onFullscreenChange() {
+    function setPreference(pref) {
+        userPreference = pref;
+        localStorage.setItem(PREF_KEY, pref);
+        // If 'never', exit fullscreen if active
+        if (pref === 'never' && isFullscreen()) {
+            exitFullscreen();
+        }
+        // Notify any UI (if needed)
+        const toggle = document.getElementById('fullscreen-toggle');
+        if (toggle) toggle.checked = (pref === 'always');
+    }
+
+    // Listen to fullscreen change to reset timer
+    document.addEventListener('fullscreenchange', () => {
         if (!isFullscreen()) {
-            state.enabled = false;
-            // User manually exited – count it
-            state.dismissedCount++;
-            state.lastDismissal = Date.now();
+            fullscreenActive = false;
+            clearTimeout(dismissTimer);
         }
-    }
-    document.addEventListener('fullscreenchange', onFullscreenChange);
-    document.addEventListener('webkitfullscreenchange', onFullscreenChange);
-
-    // ---- HIGH‑INTENT TRIGGERS ----
-    // Only trigger on actions that clearly indicate the user wants to engage.
-
-    // 1. Click on interactive elements (buttons, links, folder items, quiz controls)
-    document.addEventListener('click', function(e) {
-        const target = e.target.closest('button, a, .folder-item, .quiz-card, .action-grid button, #dock button');
-        if (target && shouldRequest()) {
-            requestFullscreen();
+    });
+    document.addEventListener('webkitfullscreenchange', () => {
+        if (!isFullscreen()) {
+            fullscreenActive = false;
+            clearTimeout(dismissTimer);
         }
     });
 
-    // 2. Double‑click on the main content area (map-container) – a common fullscreen gesture
-    document.getElementById('map-container')?.addEventListener('dblclick', function() {
-        if (shouldRequest()) requestFullscreen();
-    });
-
-    // 3. Enter key on interactive elements (same as click)
-    document.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter' && e.target.matches('button, a, .folder-item, .quiz-card, .action-grid button, #dock button')) {
-            if (shouldRequest()) requestFullscreen();
-        }
-    });
-
-    // ---- USER PREFERENCE PERSISTENCE ----
-    // Store preference when user changes it via settings (you can add a toggle in Settings modal)
+    // Expose public API
     window.__fullscreenPref = {
-        set: function(pref) {
-            state.userPreference = pref;
-            localStorage.setItem('fullscreenPreference', pref);
-            // If set to 'never', exit fullscreen if active
-            if (pref === 'never' && isFullscreen()) {
-                exitFullscreen();
-            }
-        },
-        get: function() { return state.userPreference; }
+        get: () => userPreference,
+        set: setPreference,
+        request: requestFullscreen,
+        exit: exitFullscreen,
+        isActive: () => fullscreenActive
     };
 
-    // ---- OPTIONAL: Manual toggle button (hidden but can be revealed) ----
-    // If you want a dedicated toggle, add it to your UI and call:
-    // window.__fullscreenPref.toggle = function() {
-    //     if (isFullscreen()) exitFullscreen();
-    //     else requestFullscreen();
-    // }
-
-    // ---- INITIAL CHECK ----
-    // If user preference is 'always', attempt fullscreen on load
-    if (state.userPreference === 'always' && !isFullscreen()) {
-        // Wait a moment for the app to settle
+    // If preference is 'always', attempt fullscreen on load (once)
+    if (userPreference === 'always' && !isFullscreen()) {
         setTimeout(requestFullscreen, 1000);
     }
 
-    console.log('[Fullscreen] Smart manager loaded. Preference:', state.userPreference);
+    // Remove any automatic triggers (no click/dblclick/Enter listeners)
+    console.log('[Fullscreen] Controlled fullscreen manager loaded. Preference:', userPreference);
 })();
 </script>
 <script>
