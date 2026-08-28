@@ -11296,43 +11296,6 @@ document.addEventListener('drop', (e) => {
     window.learnMode = learnMode; // Expose globally for other scripts
     const recentLessonsKey = 'learn_recent_htmls_v2';
 
-    // ---- MODE SELECTION HANDLERS (must be bound after modal exists) ----
-    function bindModeButtons() {
-        const detailBtn = document.getElementById('learn-mode-detail');
-        const cheatsheetBtn = document.getElementById('learn-mode-cheatsheet');
-        
-        if (detailBtn) {
-            detailBtn.addEventListener('click', function() {
-                learnMode = 'detail';
-                window.learnMode = 'detail';
-                document.getElementById('learn-step0').style.display = 'none';
-                document.getElementById('learn-step1').style.display = 'block';
-                const node = State.nodes.find(n => n.id === currentNodeId);
-                if (node) {
-                    const prompt = buildPrompt(node);
-                    document.getElementById('learn-prompt-text').innerText = prompt;
-                }
-            });
-        }
-        
-        if (cheatsheetBtn) {
-            cheatsheetBtn.addEventListener('click', function() {
-                learnMode = 'cheatsheet';
-                window.learnMode = 'cheatsheet';
-                document.getElementById('learn-step0').style.display = 'none';
-                document.getElementById('learn-step1').style.display = 'block';
-                const node = State.nodes.find(n => n.id === currentNodeId);
-                if (node) {
-                    const level = window._learnLevel || 'basic';
-                    const prompt = typeof window.buildAdvancedPrompt === 'function' 
-                        ? window.buildAdvancedPrompt(node, level) 
-                        : buildPrompt(node);
-                    document.getElementById('learn-prompt-text').innerText = prompt;
-                }
-            });
-        }
-    }
-
     // ---- MODE SELECTION HANDLERS (safe — waits for elements to exist) ----
     function bindModeButtons() {
         const detailBtn = document.getElementById('learn-mode-detail');
@@ -11379,21 +11342,7 @@ document.addEventListener('drop', (e) => {
         }
     }
 
-    // Try to bind immediately, but also retry if the modal isn't ready yet
-    function ensureModeButtonsBound() {
-        const detailBtn = document.getElementById('learn-mode-detail');
-        const cheatsheetBtn = document.getElementById('learn-mode-cheatsheet');
-        
-        if (detailBtn || cheatsheetBtn) {
-            bindModeButtons();
-        } else {
-            // Wait for the modal to be inserted (e.g., when openLearnWizard is called)
-            console.log('⏳ Mode buttons not ready yet — they will bind when openLearnWizard runs.');
-        }
-    }
 
-    // Run the check now
-    ensureModeButtonsBound();
 
     // Also bind inside openLearnWizard to catch when the modal is first shown
     const originalOpenLearnWizard = window.openLearnWizard || function() {};
@@ -15309,7 +15258,7 @@ function saveSettings(s, key = 'printSettings') {
             }
 
             // 2. Use separate localStorage keys to avoid conflicts
-            const settingsKey = type === 'cheatsheet' ? 'cheatsheetSettings' : 'printSettings';
+            const settingsKey = type === 'cheatsheet' ? 'cheatsheetSettings' : (type === 'learn-detail' ? 'learnSettings' : 'printSettings');
             const current = loadSettings(settingsKey);
 
             // 3. Get or create the modal
