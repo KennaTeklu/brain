@@ -8458,6 +8458,32 @@ window.addEventListener('load', async () => {
         if (document.getElementById('selected-view-text')) document.getElementById('selected-view-text').innerText = '🔲 Grid View';
     }
     
+    // --- Level Selector for Cheatsheet ---
+    document.querySelectorAll('.learn-level-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const level = this.dataset.level;
+            window._learnLevel = level;
+            // Update visual selection
+            document.querySelectorAll('.learn-level-btn').forEach(b => {
+                b.style.background = '';
+                b.style.borderColor = 'rgba(255,255,255,0.08)';
+                b.style.color = '#e2e8f0';
+            });
+            this.style.background = 'rgba(45,212,191,0.15)';
+            this.style.borderColor = '#2dd4bf';
+            this.style.color = '#2dd4bf';
+            document.getElementById('learn-level-display').textContent = 'Current: ' + level.charAt(0).toUpperCase() + level.slice(1);
+            
+            // Update the prompt if already in step 1
+            if (currentStep === 1 && learnMode === 'cheatsheet') {
+                const node = State.nodes.find(n => n.id === currentNodeId);
+                if (node && typeof window.buildAdvancedPrompt === 'function') {
+                    document.getElementById('learn-prompt-text').innerText = window.buildAdvancedPrompt(node, level);
+                }
+            }
+        });
+    });
+
     // --- Handle copy button clicks ---
     document.addEventListener('click', async (e) => {
         const copyBtn = e.target.closest('.copy-folder-content');
@@ -11196,6 +11222,18 @@ document.addEventListener('drop', (e) => {
                     <h4>Step 1: Copy this prompt to your AI</h4>
                     <div class="guide-prompt" id="learn-prompt-text" style="background: #0f172a; padding: 1rem; border-radius: 12px; font-family: monospace; font-size: 0.8rem; white-space: pre-wrap; max-height: 300px; overflow-y: auto;"></div>
                     <button id="learn-copy-prompt-btn" class="btn-secondary" style="margin-top: 0.5rem;">📋 Copy Prompt</button>
+                    
+                    <!-- Level Selector -->
+                    <div style="margin-top: 1rem; padding: 12px; background: rgba(0,0,0,0.2); border-radius: 12px;">
+                        <div style="font-size: 0.8rem; color: #94a3b8; margin-bottom: 8px;">Select density level (number of items):</div>
+                        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                            <button class="learn-level-btn btn-secondary" data-level="basic" style="padding: 6px 16px; border-radius: 20px; font-size: 0.8rem; background: rgba(45,212,191,0.15); border-color: #2dd4bf; color: #2dd4bf;">Basic (10-30)</button>
+                            <button class="learn-level-btn btn-secondary" data-level="intermediate" style="padding: 6px 16px; border-radius: 20px; font-size: 0.8rem;">Intermediate (30-70)</button>
+                            <button class="learn-level-btn btn-secondary" data-level="advanced" style="padding: 6px 16px; border-radius: 20px; font-size: 0.8rem;">Advanced (70-120+)</button>
+                        </div>
+                        <div id="learn-level-display" style="font-size: 0.7rem; color: #64748b; margin-top: 4px;">Current: Basic</div>
+                    </div>
+                    
                     <div style="margin-top: 1rem; text-align: right;">
                         <button id="learn-step1-next" class="btn-primary">Next →</button>
                     </div>
@@ -11217,16 +11255,17 @@ document.addEventListener('drop', (e) => {
                     </div>
                 </div>
                 <div id="learn-step3" class="guide-step" style="display: none;">
-                    <h4>Step 3: Lesson Preview</h4>
+                    <h4>Step 3: Preview & Print</h4>
                     <iframe id="learn-lesson-iframe" style="width:100%; height: 50vh; border: none; background: white; border-radius: 12px;"></iframe>
-                    <div style="margin-top: 1rem; display: flex; gap: 8px; justify-content: space-between;">
+                    <div style="margin-top: 1rem; display: flex; gap: 8px; justify-content: space-between; flex-wrap: wrap;">
                         <div>
                             <button id="learn-step3-back" class="btn-secondary">← Back</button>
                             <button id="learn-fullscreen-btn" class="btn-secondary">🖥️ Full Screen</button>
                             <button id="learn-immersive-btn" class="btn-secondary">🌐 Immersive</button>
                         </div>
                         <div>
-                            <button id="learn-save-node" class="btn-primary">💾 Save to Node</button>
+                            <button id="learn-print-btn" class="btn-primary" style="background:rgba(45,212,191,0.15); border-color:#2dd4bf; color:#2dd4bf;">🖨️ Print / PDF</button>
+                            <button id="learn-save-node" class="btn-secondary">💾 Save to Node</button>
                             <button id="learn-copy-html" class="btn-secondary">📋 Copy HTML</button>
                             <button id="learn-regenerate" class="btn-secondary">🔄 Regenerate</button>
                         </div>
@@ -11525,7 +11564,15 @@ function buildPrompt(node) {
         const node = State.nodes.find(n => n.id === nodeId);
         if (!node) return;
         document.getElementById('learn-modal-title').querySelector('span').innerText = node.name;
-        const prompt = buildPrompt(node);
+        
+        // Use the advanced prompt builder (from Step 4) when in cheatsheet mode
+        let prompt = '';
+        if (learnMode === 'cheatsheet') {
+            const level = window._learnLevel || 'basic';
+            prompt = window.buildAdvancedPrompt ? window.buildAdvancedPrompt(node, level) : buildPrompt(node);
+        } else {
+            prompt = buildPrompt(node);
+        }
         document.getElementById('learn-prompt-text').innerText = prompt;
         currentStep = 1;
         document.getElementById('learn-step1').style.display = 'block';
@@ -11595,8 +11642,72 @@ function validateHTML(html) {
     return { valid: true, error: null };
 }
 
-    document.getElementById('learn-validate-btn')?.addEventListener('click', () => {
-        const raw = document.getElementById('learn-html-input').value;
+    document.getElementById('learn-validate-btn').addEventListener('click', function() {
+        const raw = document.getElementById('learn-html-input').value.trim();
+        if (!raw) {
+            document.getElementById('learn-validate-error').innerText = 'Please paste some content first.';
+            document.getElementById('learn-validate-error').style.display = 'block';
+            return;
+        }
+        document.getElementById('learn-validate-error').style.display = 'none';
+        
+        // --- CHEATSHEET MODE: Parse JSON and generate advanced cheatsheet ---
+        if (learnMode === 'cheatsheet') {
+            try {
+                // Try to parse as JSON (from AI)
+                let jsonData = JSON.parse(raw);
+                if (!Array.isArray(jsonData)) {
+                    if (jsonData.items && Array.isArray(jsonData.items)) {
+                        jsonData = jsonData.items;
+                    } else {
+                        throw new Error('Expected an array of concepts.');
+                    }
+                }
+                // Store the JSON data for printing
+                window._cheatsheetData = jsonData;
+                // Generate the formatted cheatsheet using the advanced engine (from Step 4)
+                if (typeof generateCheatsheetPrintHTML === 'function') {
+                    const html = generateCheatsheetPrintHTML(jsonData, { fontSize: 9, rowShading: true, colShadows: true, colorSections: true });
+                    currentGeneratedHTML = html;
+                    document.getElementById('learn-lesson-iframe').srcdoc = html;
+                } else {
+                    // Fallback to raw display if engine not loaded
+                    currentGeneratedHTML = raw;
+                    document.getElementById('learn-lesson-iframe').srcdoc = raw;
+                }
+                // Save to recent history
+                saveRecentLesson(raw);
+                
+                // Show preview step
+                currentStep = 3;
+                document.getElementById('learn-step2').style.display = 'none';
+                document.getElementById('learn-step3').style.display = 'block';
+                updateStepIndicators(3);
+                UI.toast('✅ Cheatsheet generated with ' + jsonData.length + ' concepts!');
+                return;
+                
+            } catch (e) {
+                // If JSON parsing fails, fall back to HTML display
+                console.warn('JSON parsing failed, treating as HTML:', e.message);
+                const validation = validateHTML(raw);
+                if (!validation.valid) {
+                    document.getElementById('learn-validate-error').innerText = validation.error || 'Invalid format. Please paste valid JSON for cheatsheet mode.';
+                    document.getElementById('learn-validate-error').style.display = 'block';
+                    return;
+                }
+                currentGeneratedHTML = raw;
+                saveRecentLesson(raw);
+                document.getElementById('learn-lesson-iframe').srcdoc = raw;
+                currentStep = 3;
+                document.getElementById('learn-step2').style.display = 'none';
+                document.getElementById('learn-step3').style.display = 'block';
+                updateStepIndicators(3);
+                UI.toast('⚠️ Displaying raw HTML (JSON parsing failed)');
+                return;
+            }
+        }
+        
+        // --- LEARN DETAIL MODE (existing behavior) ---
         const validation = validateHTML(raw);
         if (!validation.valid) {
             document.getElementById('learn-validate-error').innerText = validation.error;
@@ -11635,7 +11746,33 @@ function validateHTML(html) {
         updateStepIndicators(1);
         UI.toast('You can copy the prompt again and paste new AI output.');
     });
-
+    // --- NEW: Print button for Cheatsheet mode ---
+    document.getElementById('learn-print-btn')?.addEventListener('click', function() {
+        if (learnMode === 'cheatsheet') {
+            const jsonData = window._cheatsheetData || [];
+            if (jsonData.length === 0) {
+                UI.toast('No cheatsheet data to print. Generate content first.');
+                return;
+            }
+            // Pass the JSON data to the unified print modal
+            if (typeof openPrintSettings === 'function') {
+                openPrintSettings('cheatsheet', JSON.stringify(jsonData));
+            } else {
+                UI.toast('Print system not ready.');
+            }
+        } else {
+            // For Learn Detail mode, print the HTML directly
+            if (currentGeneratedHTML) {
+                if (typeof openPrintSettings === 'function') {
+                    openPrintSettings('quiz', currentGeneratedHTML);
+                } else {
+                    printHTML(currentGeneratedHTML);
+                }
+            } else {
+                UI.toast('No content to print.');
+            }
+        }
+    });
     // Fullscreen buttons
     document.getElementById('learn-fullscreen-btn')?.addEventListener('click', () => {
         const iframe = document.getElementById('learn-lesson-iframe');
@@ -14636,11 +14773,16 @@ setTimeout(() => {
     }
 
     // ---- Generate the full exam HTML ----
-    function generateExamHTML(settings) {
+    function generateExamHTML(settings, questionsParam = null) {
         const q = window.State?.quiz;
-        if (!q) return '<p style="color:red; font-family: Arial, sans-serif;">Quiz state not available. Open a quiz first.</p>';
+        if (!q && !questionsParam) return '<p style="color:red; font-family: Arial, sans-serif;">Quiz state not available. Open a quiz first.</p>';
 
-        const questions = (q.visibleQuestions && q.visibleQuestions.length) ? q.visibleQuestions : q.allQuestions;
+        let questions = questionsParam;
+        if (!questions || questions.length === 0) {
+            if (q) {
+                questions = (q.visibleQuestions && q.visibleQuestions.length) ? q.visibleQuestions : q.allQuestions;
+            }
+        }
         if (!questions || questions.length === 0) return '<p style="color:red; font-family: Arial, sans-serif;">No questions to print.</p>';
 
         // Lineage
@@ -14870,178 +15012,582 @@ setTimeout(() => {
         }, 1000);
     }
 
-    // ---- Show settings modal (organized, polished) ----
-    function openPrintSettings() {
-        console.log('Opening print settings...');
-        const current = loadSettings();
-        let modal = document.getElementById('print-settings-modal');
-        if (!modal) {
-            modal = document.createElement('div');
-            modal.id = 'print-settings-modal';
-            modal.className = 'modal-bg';
-            modal.style.display = 'flex';
-            modal.style.zIndex = '100000';   // above quiz (9999)
-            modal.innerHTML = `
-                <div class="modal-medium" style="max-width:600px; width:95vw; max-height:85vh; background:rgba(0,0,0,0.9); color:#e2e8f0; padding:24px; border-radius:16px; overflow-y:auto; box-shadow:0 8px 32px rgba(0,0,0,0.6);">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:12px;">
-                        <h3 style="margin:0; font-size:1.2rem; font-weight:600;">Print / PDF Settings</h3>
-                        <button class="close-modal-btn" id="print-settings-close" style="background:none;border:none;color:#94a3b8;font-size:1.5rem;cursor:pointer;line-height:1;">✕</button>
-                    </div>
-                    
-                    <!-- Layout Section -->
-                    <div style="margin-bottom:20px;">
-                        <div style="font-size:0.8rem; text-transform:uppercase; color:#64748b; margin-bottom:8px; letter-spacing:0.5px;">Layout</div>
-                        <label style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
-                            <span style="flex:0 0 120px; font-size:0.9rem;">Font size:</span>
-                            <input type="range" id="print-font-size" min="10" max="18" value="${current.fontSize}" step="1" style="flex:1;">
-                            <span id="font-size-value" style="width:30px; text-align:right;">${current.fontSize} pt</span>
-                        </label>
-                    </div>
+        // ---- Show settings modal (refactored for Cheatsheet & Quiz) ----
+        function openPrintSettings(type = 'quiz', contentHTML = '') {
+            console.log('Opening print settings for:', type);
+            
+            // 1. Store mode and content globally for the print button
+            window._printMode = type;
+            window._printContent = contentHTML;
 
-                    <!-- Content Section -->
-                    <div style="margin-bottom:20px;">
-                        <div style="font-size:0.8rem; text-transform:uppercase; color:#64748b; margin-bottom:8px; letter-spacing:0.5px;">Content</div>
-                        <label style="display:flex; align-items:center; gap:12px; margin-bottom:8px; cursor:pointer;">
-                            <input type="checkbox" id="print-show-explanations" ${current.showExplanations ? 'checked' : ''} style="width:16px; height:16px;">
-                            <span>Include explanations in detailed answers</span>
-                        </label>
-                        <label style="display:flex; align-items:center; gap:12px; margin-bottom:8px; cursor:pointer;">
-                            <input type="checkbox" id="print-show-instructions" ${current.showInstructions ? 'checked' : ''} style="width:16px; height:16px;">
-                            <span>Show instructions on exam</span>
-                        </label>
-                        <label style="display:flex; align-items:center; gap:12px; margin-bottom:8px; cursor:pointer;">
-                            <input type="checkbox" id="print-show-question-nums" ${current.showQuestionNumbers ? 'checked' : ''} style="width:16px; height:16px;">
-                            <span>Show question numbers</span>
-                        </label>
-                        <label style="display:flex; align-items:center; gap:12px; margin-bottom:8px; cursor:pointer;">
-                            <input type="checkbox" id="print-show-student-info" ${current.showStudentInfo ? 'checked' : ''} style="width:16px; height:16px;">
-                            <span>Include student name/date fields</span>
-                        </label>
-                    </div>
+            // 2. Use separate localStorage keys to avoid conflicts
+            const settingsKey = type === 'cheatsheet' ? 'cheatsheetSettings' : 'printSettings';
+            const current = loadSettings(settingsKey);
 
-                    <!-- Answer Sheets Section -->
-                    <div style="margin-bottom:20px;">
-                        <div style="font-size:0.8rem; text-transform:uppercase; color:#64748b; margin-bottom:8px; letter-spacing:0.5px;">Answer Sheets</div>
-                        <label style="display:flex; align-items:center; gap:12px; margin-bottom:8px; cursor:pointer;">
-                            <input type="checkbox" id="print-show-answer-key" ${current.showAnswerKey ? 'checked' : ''} style="width:16px; height:16px;">
-                            <span>Show answer key (quick + detailed)</span>
-                        </label>
-                        <label style="display:flex; align-items:center; gap:12px; margin-bottom:8px; cursor:pointer;">
-                            <input type="checkbox" id="print-two-answer-sheets" ${current.twoAnswerSheets ? 'checked' : ''} style="width:16px; height:16px;">
-                            <span>Show both quick & detailed answer sheets</span>
-                        </label>
-                    </div>
+            // 3. Get or create the modal
+            let modal = document.getElementById('print-settings-modal');
+            if (!modal) {
+                modal = document.createElement('div');
+                modal.id = 'print-settings-modal';
+                modal.className = 'modal-bg';
+                modal.style.display = 'flex';
+                modal.style.zIndex = '100000';
+                modal.innerHTML = `
+                    <div class="modal-medium" style="max-width:600px; width:95vw; max-height:85vh; background:rgba(0,0,0,0.9); color:#e2e8f0; padding:24px; border-radius:16px; overflow-y:auto; box-shadow:0 8px 32px rgba(0,0,0,0.6);">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:12px;">
+                            <h3 style="margin:0; font-size:1.2rem; font-weight:600;">Print / PDF Settings</h3>
+                            <button class="close-modal-btn" id="print-settings-close" style="background:none;border:none;color:#94a3b8;font-size:1.5rem;cursor:pointer;line-height:1;">✕</button>
+                        </div>
+                        
+                        <!-- Layout Section -->
+                        <div style="margin-bottom:20px;">
+                            <div style="font-size:0.8rem; text-transform:uppercase; color:#64748b; margin-bottom:8px; letter-spacing:0.5px;">Layout</div>
+                            <label style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
+                                <span style="flex:0 0 120px; font-size:0.9rem;">Font size:</span>
+                                <input type="range" id="print-font-size" min="10" max="18" value="${current.fontSize}" step="1" style="flex:1;">
+                                <span id="font-size-value" style="width:30px; text-align:right;">${current.fontSize} pt</span>
+                            </label>
+                        </div>
 
-                    <!-- Preview -->
-                    <div style="background:rgba(255,255,255,0.05); border-radius:12px; padding:10px; margin-bottom:1rem;">
-                        <strong style="color:#2dd4bf; display:block; margin-bottom:8px;">Live Preview</strong>
-                        <iframe id="print-preview" style="width:100%; height:300px; border:none; background:white; border-radius:8px;"></iframe>
-                    </div>
+                        <!-- NEW: Cheatsheet Options (Hidden by default) -->
+                        <div id="cheatsheet-options-group" class="setting-group" style="display: ${type === 'cheatsheet' ? 'block' : 'none'};">
+                            <div style="font-size:0.8rem; text-transform:uppercase; color:#64748b; margin-bottom:8px; letter-spacing:0.5px;">📋 Cheatsheet Layout</div>
+                            <label style="display:flex; align-items:center; gap:12px; margin-bottom:6px; cursor:pointer;">
+                                <input type="checkbox" id="print-row-shading" ${current.rowShading !== undefined ? (current.rowShading ? 'checked' : '') : 'checked'} style="width:16px; height:16px;">
+                                <span>Alternating Row Shading</span>
+                            </label>
+                            <label style="display:flex; align-items:center; gap:12px; margin-bottom:6px; cursor:pointer;">
+                                <input type="checkbox" id="print-col-shadows" ${current.colShadows !== undefined ? (current.colShadows ? 'checked' : '') : 'checked'} style="width:16px; height:16px;">
+                                <span>Column Borders</span>
+                            </label>
+                            <label style="display:flex; align-items:center; gap:12px; margin-bottom:6px; cursor:pointer;">
+                                <input type="checkbox" id="print-color-sections" ${current.colorSections !== undefined ? (current.colorSections ? 'checked' : '') : 'checked'} style="width:16px; height:16px;">
+                                <span>Color-coded Sections</span>
+                            </label>
+                        </div>
 
-                    <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:1rem;">
-                        <button id="print-cancel-btn" class="btn-secondary" style="background:transparent;border:1px solid var(--border);color:#e2e8f0;padding:8px 16px;border-radius:40px;cursor:pointer;">Cancel</button>
-                        <button id="print-now-btn" class="btn-primary" style="background:rgba(45,212,191,0.15);border:1px solid var(--accent);color:var(--accent);padding:8px 20px;border-radius:40px;cursor:pointer;">Print / Save PDF</button>
-                    </div>
-                </div>
-            `;
-            document.body.appendChild(modal);
-        } else {
-            modal.style.display = 'flex';
-            document.getElementById('print-font-size').value = current.fontSize;
-            document.getElementById('font-size-value').textContent = current.fontSize + ' pt';
-            document.getElementById('print-show-explanations').checked = current.showExplanations;
-            document.getElementById('print-show-instructions').checked = current.showInstructions;
-            document.getElementById('print-show-question-nums').checked = current.showQuestionNumbers;
-            document.getElementById('print-show-student-info').checked = current.showStudentInfo;
-            document.getElementById('print-show-answer-key').checked = current.showAnswerKey;
-            document.getElementById('print-two-answer-sheets').checked = current.twoAnswerSheets;
-        }
+                        <!-- NEW: Quiz Options (Visible by default) -->
+                        <div id="quiz-options-group" class="setting-group" style="display: ${type === 'quiz' ? 'block' : 'none'};">
+                            <div style="font-size:0.8rem; text-transform:uppercase; color:#64748b; margin-bottom:8px; letter-spacing:0.5px;">📝 Quiz Structure</div>
+                            <label style="display:flex; align-items:center; gap:12px; margin-bottom:6px; cursor:pointer;">
+                                <input type="checkbox" id="print-show-explanations" ${current.showExplanations !== undefined ? (current.showExplanations ? 'checked' : '') : 'checked'} style="width:16px; height:16px;">
+                                <span>Show Explanations</span>
+                            </label>
+                            <label style="display:flex; align-items:center; gap:12px; margin-bottom:6px; cursor:pointer;">
+                                <input type="checkbox" id="print-show-answer-key" ${current.showAnswerKey !== undefined ? (current.showAnswerKey ? 'checked' : '') : 'checked'} style="width:16px; height:16px;">
+                                <span>Show Rotated Answer Key</span>
+                            </label>
+                            <label style="display:flex; align-items:center; gap:12px; margin-bottom:6px; cursor:pointer;">
+                                <input type="checkbox" id="print-show-scratch-space" ${current.showScratchSpace !== undefined ? (current.showScratchSpace ? 'checked' : '') : 'checked'} style="width:16px; height:16px;">
+                                <span>Show Scratch Space</span>
+                            </label>
+                        </div>
 
-        // ---- Update preview ----
-        const updatePreview = () => {
-            const settings = {
-                fontSize: parseInt(document.getElementById('print-font-size').value),
-                showExplanations: document.getElementById('print-show-explanations').checked,
-                showInstructions: document.getElementById('print-show-instructions').checked,
-                showQuestionNumbers: document.getElementById('print-show-question-nums').checked,
-                showStudentInfo: document.getElementById('print-show-student-info').checked,
-                showAnswerKey: document.getElementById('print-show-answer-key').checked,
-                twoAnswerSheets: document.getElementById('print-two-answer-sheets').checked
+                        <!-- Preview -->
+                        <div style="background:rgba(255,255,255,0.05); border-radius:12px; padding:10px; margin-bottom:1rem;">
+                            <strong style="color:#2dd4bf; display:block; margin-bottom:8px;">Live Preview</strong>
+                            <iframe id="print-preview" style="width:100%; height:300px; border:none; background:white; border-radius:8px;"></iframe>
+                        </div>
+
+                        <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:1rem;">
+                            <button id="print-cancel-btn" class="btn-secondary" style="background:transparent;border:1px solid var(--border);color:#e2e8f0;padding:8px 16px;border-radius:40px;cursor:pointer;">Cancel</button>
+                            <button id="print-now-btn" class="btn-primary" style="background:rgba(45,212,191,0.15);border:1px solid var(--accent);color:var(--accent);padding:8px 20px;border-radius:40px;cursor:pointer;">Print / Save PDF</button>
+                        </div>
+                    </div>
+                `;
+                document.body.appendChild(modal);
+            } else {
+                modal.style.display = 'flex';
+                // Show/hide the new option groups
+                const cheatsheetGroup = document.getElementById('cheatsheet-options-group');
+                const quizGroup = document.getElementById('quiz-options-group');
+                if (cheatsheetGroup) cheatsheetGroup.style.display = (type === 'cheatsheet') ? 'block' : 'none';
+                if (quizGroup) quizGroup.style.display = (type === 'quiz') ? 'block' : 'none';
+                
+                // Populate fields from the correct settings
+                document.getElementById('print-font-size').value = current.fontSize;
+                document.getElementById('font-size-value').textContent = current.fontSize + ' pt';
+                document.getElementById('print-row-shading').checked = current.rowShading !== undefined ? current.rowShading : true;
+                document.getElementById('print-col-shadows').checked = current.colShadows !== undefined ? current.colShadows : true;
+                document.getElementById('print-color-sections').checked = current.colorSections !== undefined ? current.colorSections : true;
+                document.getElementById('print-show-explanations').checked = current.showExplanations !== undefined ? current.showExplanations : true;
+                document.getElementById('print-show-answer-key').checked = current.showAnswerKey !== undefined ? current.showAnswerKey : true;
+                document.getElementById('print-show-scratch-space').checked = current.showScratchSpace !== undefined ? current.showScratchSpace : true;
+            }
+
+            // ---- Update preview ----
+            const updatePreview = () => {
+                const settings = {
+                    fontSize: parseInt(document.getElementById('print-font-size').value),
+                    rowShading: document.getElementById('print-row-shading').checked,
+                    colShadows: document.getElementById('print-col-shadows').checked,
+                    colorSections: document.getElementById('print-color-sections').checked,
+                    showExplanations: document.getElementById('print-show-explanations').checked,
+                    showAnswerKey: document.getElementById('print-show-answer-key').checked,
+                    showScratchSpace: document.getElementById('print-show-scratch-space').checked
+                };
+                // Use the appropriate generator based on mode
+                let html = '';
+                if (window._printMode === 'cheatsheet') {
+                    // Use the new cheatsheet generator (will be defined in Step 4)
+                    html = typeof generateCheatsheetPrintHTML === 'function' 
+                        ? generateCheatsheetPrintHTML(window._printContent, settings)
+                        : '<p>Cheatsheet generator not loaded yet.</p>';
+                } else {
+                    // Use existing quiz generator
+                    html = generateExamHTML(settings);
+                }
+                document.getElementById('print-preview').srcdoc = html;
             };
-            const html = generateExamHTML(settings);
-            document.getElementById('print-preview').srcdoc = html;
-        };
 
-        // Bind events
-        const closeBtn = document.getElementById('print-settings-close');
-        const cancelBtn = document.getElementById('print-cancel-btn');
-        const printBtn = document.getElementById('print-now-btn');
-        const fontSize = document.getElementById('print-font-size');
-        const showExpl = document.getElementById('print-show-explanations');
-        const showInstr = document.getElementById('print-show-instructions');
-        const showQNums = document.getElementById('print-show-question-nums');
-        const showStudentInfo = document.getElementById('print-show-student-info');
-        const showAnswerKey = document.getElementById('print-show-answer-key');
-        const twoSheets = document.getElementById('print-two-answer-sheets');
+            // Bind events
+            const closeBtn = document.getElementById('print-settings-close');
+            const cancelBtn = document.getElementById('print-cancel-btn');
+            const printBtn = document.getElementById('print-now-btn');
+            const fontSize = document.getElementById('print-font-size');
+            const rowShading = document.getElementById('print-row-shading');
+            const colShadows = document.getElementById('print-col-shadows');
+            const colorSections = document.getElementById('print-color-sections');
+            const showExpl = document.getElementById('print-show-explanations');
+            const showAnswerKey = document.getElementById('print-show-answer-key');
+            const showScratch = document.getElementById('print-show-scratch-space');
 
-        fontSize.oninput = () => {
-            document.getElementById('font-size-value').textContent = fontSize.value + ' pt';
-            updatePreview();
-        };
-        showExpl.onchange = updatePreview;
-        showInstr.onchange = updatePreview;
-        showQNums.onchange = updatePreview;
-        showStudentInfo.onchange = updatePreview;
-        showAnswerKey.onchange = updatePreview;
-        twoSheets.onchange = updatePreview;
-
-        function closeModal() {
-            modal.style.display = 'none';
-            saveSettings({
-                fontSize: parseInt(fontSize.value),
-                showExplanations: showExpl.checked,
-                showInstructions: showInstr.checked,
-                showQuestionNumbers: showQNums.checked,
-                showStudentInfo: showStudentInfo.checked,
-                showAnswerKey: showAnswerKey.checked,
-                twoAnswerSheets: twoSheets.checked
+            // All inputs trigger preview update
+            const inputs = [fontSize, rowShading, colShadows, colorSections, showExpl, showAnswerKey, showScratch];
+            inputs.forEach(el => {
+                if (!el) return;
+                el.addEventListener('input', updatePreview);
+                el.addEventListener('change', updatePreview);
             });
-        }
-        closeBtn.onclick = closeModal;
-        cancelBtn.onclick = closeModal;
-        modal.onclick = (e) => {
-            if (e.target === modal) closeModal();
-        };
 
-        printBtn.onclick = () => {
-            const settings = {
-                fontSize: parseInt(fontSize.value),
-                showExplanations: showExpl.checked,
-                showInstructions: showInstr.checked,
-                showQuestionNumbers: showQNums.checked,
-                showStudentInfo: showStudentInfo.checked,
-                showAnswerKey: showAnswerKey.checked,
-                twoAnswerSheets: twoSheets.checked
+            function closeModal() {
+                modal.style.display = 'none';
+                const settingsKey = window._printMode === 'cheatsheet' ? 'cheatsheetSettings' : 'printSettings';
+                saveSettings({
+                    fontSize: parseInt(fontSize.value),
+                    rowShading: rowShading ? rowShading.checked : true,
+                    colShadows: colShadows ? colShadows.checked : true,
+                    colorSections: colorSections ? colorSections.checked : true,
+                    showExplanations: showExpl ? showExpl.checked : true,
+                    showAnswerKey: showAnswerKey ? showAnswerKey.checked : true,
+                    showScratchSpace: showScratch ? showScratch.checked : true
+                }, settingsKey);
+            }
+            
+            closeBtn.onclick = closeModal;
+            cancelBtn.onclick = closeModal;
+            modal.onclick = (e) => {
+                if (e.target === modal) closeModal();
             };
-            saveSettings(settings);
-            const html = generateExamHTML(settings);
-            closeModal();
-            printHTML(html);
-        };
 
-        updatePreview();
-    }
+            // ---- Print button routes based on mode ----
+            printBtn.onclick = () => {
+                const settings = {
+                    fontSize: parseInt(fontSize.value),
+                    rowShading: rowShading ? rowShading.checked : true,
+                    colShadows: colShadows ? colShadows.checked : true,
+                    colorSections: colorSections ? colorSections.checked : true,
+                    showExplanations: showExpl ? showExpl.checked : true,
+                    showAnswerKey: showAnswerKey ? showAnswerKey.checked : true,
+                    showScratchSpace: showScratch ? showScratch.checked : true
+                };
+                const settingsKey = window._printMode === 'cheatsheet' ? 'cheatsheetSettings' : 'printSettings';
+                saveSettings(settings, settingsKey);
+                
+                let html = '';
+                if (window._printMode === 'cheatsheet') {
+                    html = typeof generateCheatsheetPrintHTML === 'function'
+                        ? generateCheatsheetPrintHTML(window._printContent, settings)
+                        : '<p>Error: Cheatsheet generator not loaded.</p>';
+                } else {
+                    html = generateExamHTML(settings);
+                }
+                closeModal();
+                if (html) printHTML(html);
+            };
 
-    // ---- Event delegation for print button ----
+            // Initial preview
+            updatePreview();
+        }
+
+    // ---- Event delegation for print button (UPGRADED to advanced generator) ----
     document.addEventListener('click', (e) => {
         if (e.target.closest('#quiz-print-btn')) {
             e.preventDefault();
-            openPrintSettings();
+            const q = window.State?.quiz;
+            if (!q) {
+                UI.toast('No quiz data available.');
+                return;
+            }
+            // Get the current visible questions (or all questions)
+            let questions = (q.visibleQuestions && q.visibleQuestions.length) ? q.visibleQuestions : q.allQuestions;
+            if (!questions || questions.length === 0) {
+                UI.toast('No questions to print.');
+                return;
+            }
+            // Format for the advanced generator (ensure consistent structure)
+            const formattedQuestions = questions.map(qItem => ({
+                text: qItem.text || qItem.question || 'No question text',
+                choices: qItem.choices || ['A', 'B', 'C', 'D'],
+                correct: qItem.correct !== undefined ? qItem.correct : 0,
+                explanation: qItem.explanation || 'No explanation provided.'
+            }));
+            // Pass to the unified print modal with 'quiz' type
+            if (typeof openPrintSettings === 'function') {
+                openPrintSettings('quiz', formattedQuestions);
+            } else {
+                UI.toast('Print system not available.');
+            }
         }
     });
 
     // ---- Debug ----
     console.log('Magnificent print script loaded.');
+})();
+</script>
+<!-- ===== BIG SCRIPT BLOCK: 10-EXPERT ADVANCED ENGINE ===== -->
+<script>
+(function() {
+    'use strict';
+
+    // --- 1. THE ENHANCED PROMPT BUILDER (For the AI) ---
+    window.buildAdvancedPrompt = function(node, level = 'advanced') {
+        const content = node.content || 'No content provided.';
+        const itemCount = (level === 'basic') ? 30 : (level === 'intermediate' ? 70 : 120);
+        return `You are an advanced Educational Extraction Engine. You are a domain expert.
+Your task is to extract ${itemCount}+ distinct, high-yield concepts from the provided text.
+IMPORTANT: Do NOT output raw text. Output a JSON array.
+
+For every concept, provide:
+1. term (string)
+2. definition (simple, 1 sentence, clear for non-native speakers)
+3. example (real-world or biblical)
+4. memory (acronym or visual hint)
+5. tag: one of ["DEFINITION", "PERSON", "PROCESS", "CONTROVERSY", "FORMULA"]
+
+Cover the entire text deeply. Ensure a balanced distribution across all 5 tags.
+Output ONLY valid JSON inside a markdown code block.
+
+Chapter Content:
+${content.substring(0, 8000)}`;
+    };
+
+    // --- 2. THE 5-EXPERT CLUSTERING ENGINE ---
+    function clusterConcepts(rawConcepts) {
+        const clusters = {
+            DEFINITIONS: [],
+            PEOPLE: [],
+            PROCESSES: [],
+            CONTROVERSIES: [],
+            FORMULAS: []
+        };
+
+        if (!rawConcepts || !Array.isArray(rawConcepts)) {
+            console.warn('Invalid concepts for clustering, using fallback.');
+            return clusters;
+        }
+
+        rawConcepts.forEach(c => {
+            let tag = c.tag || '';
+            if (!tag) {
+                // Simple heuristic clustering
+                const term = c.term || '';
+                if (term.includes('ology') || term.includes('Doctrine') || term.includes('Faith') || term.includes('Theology')) tag = 'DEFINITIONS';
+                else if (term.includes('Aquinas') || term.includes('Kant') || term.includes('Barth') || term.includes('Augustine') || term.includes('Calvin')) tag = 'PEOPLE';
+                else if (term.includes('Revelation') || term.includes('Inspiration') || term.includes('Justification') || term.includes('Sanctification')) tag = 'PROCESSES';
+                else if (term.includes('Controvers') || term.includes('Debate') || term.includes('Critique') || term.includes('Heresy')) tag = 'CONTROVERSIES';
+                else tag = 'FORMULAS';
+            }
+            const key = tag.toUpperCase();
+            if (clusters[key]) clusters[key].push(c);
+            else clusters.DEFINITIONS.push(c);
+        });
+
+        // Ensure each cluster has at least 2 items to avoid empty sections
+        for (const key of Object.keys(clusters)) {
+            if (clusters[key].length === 0) {
+                if (clusters.DEFINITIONS.length > 2) {
+                    clusters[key].push(clusters.DEFINITIONS.pop());
+                    clusters[key].push(clusters.DEFINITIONS.pop());
+                }
+            }
+        }
+        return clusters;
+    }
+
+    // --- 3. THE ADVANCED CHEATSHEET GENERATOR (3-Column Grid) ---
+    window.generateCheatsheetPrintHTML = function(rawContent, settings) {
+        let items = [];
+        try {
+            if (typeof rawContent === 'string') {
+                const parsed = JSON.parse(rawContent);
+                if (Array.isArray(parsed)) items = parsed;
+                else if (parsed.items) items = parsed.items;
+            } else if (Array.isArray(rawContent)) {
+                items = rawContent;
+            }
+        } catch (e) {
+            console.warn('Raw content is not JSON, using fallback concepts.');
+            items = getFallbackConcepts();
+        }
+
+        if (!items || items.length === 0) {
+            items = getFallbackConcepts();
+        }
+
+        const clusters = clusterConcepts(items);
+        const colorMap = {
+            DEFINITIONS: '#1a4d8f',
+            PEOPLE: '#2d6a4f',
+            PROCESSES: '#b9770e',
+            CONTROVERSIES: '#c44536',
+            FORMULAS: '#5b2a8c'
+        };
+
+        const displayNames = {
+            DEFINITIONS: 'Core Definitions',
+            PEOPLE: 'Key Figures',
+            PROCESSES: 'Processes & Models',
+            CONTROVERSIES: 'Debates & Controversies',
+            FORMULAS: 'Formulas & Frameworks'
+        };
+
+        let sectionsHtml = '';
+        let totalItems = 0;
+        for (const [tag, tagItems] of Object.entries(clusters)) {
+            if (tagItems.length === 0) continue;
+            totalItems += tagItems.length;
+            const color = colorMap[tag] || '#333';
+            const displayName = displayNames[tag] || tag;
+
+            let rows = tagItems.map(c => `
+                <div class="entry">
+                    <div class="term" style="color:${color};">${c.term}</div>
+                    <div class="def">${c.definition}</div>
+                    ${c.example ? `<div class="ex">📌 ${c.example}</div>` : ''}
+                    ${c.memory ? `<div class="mem">🧠 ${c.memory}</div>` : ''}
+                </div>
+            `).join('');
+
+            sectionsHtml += `
+                <div class="section-card" style="border-left-color:${color};">
+                    <div class="section-title" style="color:${color};">${displayName}</div>
+                    ${rows}
+                </div>
+            `;
+        }
+
+        const fontSize = settings.fontSize || 8;
+        return `<!DOCTYPE html>
+        <html>
+        <head><meta charset="UTF-8"><title>Advanced Cheatsheet</title>
+        <style>
+            * { box-sizing:border-box; margin:0; padding:0; }
+            body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; padding: 0.2in; background: #fff; color: #000; }
+            .grid-container { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+            .section-card { background: #fafafa; border-radius: 8px; padding: 10px; border-left: 4px solid #ccc; page-break-inside: avoid; }
+            .section-title { font-size: 9pt; font-weight: 700; margin-bottom: 6px; }
+            .entry { margin-bottom: 6px; border-bottom: 1px solid #eee; padding-bottom: 4px; }
+            .term { font-weight: 700; font-size: 8.5pt; }
+            .def { font-size: 7.5pt; color: #222; margin-top: 1px; }
+            .ex { font-size: 7pt; color: #555; margin-top: 1px; }
+            .mem { font-size: 7pt; color: #2d6a4f; font-style: italic; margin-top: 1px; }
+            .header { border-bottom: 2px solid #000; padding-bottom: 6px; margin-bottom: 12px; }
+            .header h2 { font-size: 12pt; font-weight: 700; }
+            .header .count { font-size: 8pt; color: #555; font-weight: 400; }
+            @page { margin: 0.2in; }
+            .footer { margin-top: 16px; font-size: 7pt; color: #94a3b8; text-align: center; border-top: 1px solid #e2e8f0; padding-top: 6px; }
+            @media print { .section-card { break-inside: avoid; } }
+        </style>
+        </head>
+        <body>
+            <div class="header">
+                <h2>📋 Advanced Cheatsheet <span class="count">(${totalItems} concepts)</span></h2>
+            </div>
+            <div class="grid-container">${sectionsHtml}</div>
+            <div class="footer">© 2026 · Brain.try4ever.com · Generated by 5-Expert System</div>
+        </body>
+        </html>`;
+    };
+
+    // --- 4. THE ADVANCED QUIZ GENERATOR (3 Sections + Bubble Sheet) ---
+    window.generateAdvancedQuizPrint = function(rawData, settings) {
+        let questions = [];
+        if (Array.isArray(rawData)) {
+            questions = rawData;
+        } else if (rawData && rawData.questions) {
+            questions = rawData.questions;
+        } else {
+            const items = getFallbackConcepts();
+            questions = items.map(c => ({
+                text: `What is the definition of "${c.term}"?`,
+                choices: [c.definition, "This is a distractor", "Another option", "Not the answer"],
+                correct: 0,
+                explanation: c.definition,
+                difficulty: 'Medium'
+            }));
+        }
+
+        if (!questions || questions.length === 0) {
+            return '<p style="padding:20px;">No questions available for the quiz.</p>';
+        }
+
+        const total = questions.length;
+        const secA = questions.slice(0, Math.floor(total * 0.4));
+        const secB = questions.slice(Math.floor(total * 0.4), Math.floor(total * 0.7));
+        const secC = questions.slice(Math.floor(total * 0.7));
+
+        let qHtml = '';
+        const sections = [
+            { title: 'A. FOUNDATIONAL RECALL', data: secA, color: '#1a4d8f', icon: '📖' },
+            { title: 'B. APPLICATION & ANALYSIS', data: secB, color: '#b9770e', icon: '🔍' },
+            { title: 'C. SYNTHESIS & EVALUATION', data: secC, color: '#c44536', icon: '🧠' }
+        ];
+
+        let questionCounter = 0;
+        sections.forEach(sec => {
+            if (sec.data.length === 0) return;
+            qHtml += `
+                <div style="margin-top:16px; page-break-inside:avoid;">
+                    <div style="background:${sec.color}; color:white; padding:4px 12px; border-radius:4px; font-weight:bold; font-size:10pt; margin-bottom:8px;">
+                        ${sec.icon} ${sec.title} (${sec.data.length} questions)
+                    </div>
+            `;
+            sec.data.forEach((q, idx) => {
+                questionCounter++;
+                const choicesHtml = q.choices.map((ch, i) => `<li>${ch}</li>`).join('');
+                const scratch = settings.showScratchSpace ? `<div style="border-bottom:1px dashed #ccc; margin-top:4px; height:20px; font-size:7pt; color:#aaa;">📝 Scratch</div>` : '';
+                const explanationHtml = settings.showExplanations ? `<div style="font-size:7.5pt; color:#2d6a4f; border-left:3px solid #2dd4bf; padding-left:8px; margin-top:4px;">✅ ${q.explanation || 'Correct answer shown above.'}</div>` : '';
+                qHtml += `
+                    <div style="margin-bottom:12px; border-bottom:1px solid #eee; padding-bottom:6px;">
+                        <div style="font-weight:600; font-size:9pt;">${questionCounter}. ${q.text}</div>
+                        <ul style="padding-left:20px; list-style:upper-alpha; font-size:8.5pt; margin:4px 0;">${choicesHtml}</ul>
+                        ${explanationHtml}
+                        ${scratch}
+                    </div>
+                `;
+            });
+            qHtml += `</div>`;
+        });
+
+        let bubbles = '';
+        const cols = 4;
+        for (let i = 1; i <= questionCounter; i++) {
+            bubbles += `
+                <div style="display:inline-flex; align-items:center; margin:2px 4px; font-size:7pt;">
+                    <span style="width:16px; text-align:right;">${i}.</span>
+                    <span style="border:1px solid #000; border-radius:50%; width:12px; height:12px; display:inline-block; margin:0 1px;"></span>
+                    <span style="border:1px solid #000; border-radius:50%; width:12px; height:12px; display:inline-block; margin:0 1px;"></span>
+                    <span style="border:1px solid #000; border-radius:50%; width:12px; height:12px; display:inline-block; margin:0 1px;"></span>
+                    <span style="border:1px solid #000; border-radius:50%; width:12px; height:12px; display:inline-block; margin:0 1px;"></span>
+                </div>
+            `;
+            if (i % cols === 0) bubbles += `<br>`;
+        }
+
+        let answerKeyString = '';
+        if (settings.showAnswerKey) {
+            const letters = ['A', 'B', 'C', 'D'];
+            answerKeyString = questions.map((q, i) => {
+                const correctIdx = q.correct !== undefined ? q.correct : 0;
+                return `${i+1}-${letters[correctIdx]}`;
+            }).join(' ');
+        }
+
+        return `<!DOCTYPE html>
+        <html>
+        <head><meta charset="UTF-8"><title>Advanced Quiz</title>
+        <style>
+            * { box-sizing:border-box; margin:0; padding:0; }
+            body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; padding: 0.3in; background: #fff; color: #000; }
+            .header { border-bottom: 2px solid #000; padding-bottom: 6px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: flex-end; }
+            .header h2 { font-size: 14pt; font-weight: 700; }
+            .header .info { font-size: 8.5pt; color: #555; }
+            .instructions { background: #f8fafc; padding: 8px 12px; border-radius: 4px; font-size: 8.5pt; margin-bottom: 16px; border: 1px solid #ddd; }
+            .bubble-sheet { page-break-before: always; margin-top: 24px; border-top: 2px dashed #aaa; padding-top: 16px; }
+            .bubble-sheet h3 { font-size: 10pt; text-align: center; margin-bottom: 8px; }
+            @page { margin: 0.3in; }
+            .footer { margin-top: 24px; font-size: 7pt; color: #94a3b8; text-align: center; border-top: 1px solid #e2e8f0; padding-top: 6px; }
+            .answer-key-rotated { transform: rotate(180deg); font-size: 6pt; color: rgba(0,0,0,0.15); text-align: center; margin-top: 20px; word-break: break-all; }
+        </style>
+        </head>
+        <body>
+            <div class="header">
+                <h2>📝 Advanced Quiz</h2>
+                <div class="info">${questionCounter} questions · ${Math.ceil(questionCounter * 1.5)} minutes</div>
+            </div>
+            <div class="instructions">📌 Choose the best answer for each question. Mark your answers on the bubble sheet. Use the scratch space for notes.</div>
+            ${qHtml}
+            <div class="bubble-sheet">
+                <h3>📋 Answer Sheet</h3>
+                <div style="display:flex; flex-wrap:wrap; gap:2px; margin-top:8px;">${bubbles}</div>
+                ${settings.showAnswerKey ? `<div class="answer-key-rotated">🔑 ANSWER KEY: ${answerKeyString}</div>` : ''}
+            </div>
+            <div class="footer">© 2026 · Brain.try4ever.com · Generated by 5-Expert Quiz System</div>
+        </body>
+        </html>`;
+    };
+
+    // --- 5. FALLBACK CONCEPTS (for demo when no AI data is present) ---
+    function getFallbackConcepts() {
+        return [
+            { term: "Theology", definition: "The study or science of God.", example: "Systematic theology organizes doctrines.", memory: "Theos + Logos", tag: "DEFINITIONS" },
+            { term: "Systematic Theology", definition: "A coherent statement of Christian doctrines based on Scripture.", example: "Organizes teachings on God, sin, salvation.", memory: "Systematic = organized", tag: "DEFINITIONS" },
+            { term: "Augustine", definition: "Church father who wrote City of God and Confessions.", example: "Emphasized grace and original sin.", memory: "354-430 AD", tag: "PEOPLE" },
+            { term: "Thomas Aquinas", definition: "Medieval theologian who integrated Aristotle with Christianity.", example: "Wrote Summa Theologica and the Five Proofs.", memory: "1225-1274", tag: "PEOPLE" },
+            { term: "Revelation", definition: "God's self-disclosure to humanity.", example: "Special revelation is in Scripture and Christ.", memory: "Unveiling", tag: "PROCESSES" },
+            { term: "Justification", definition: "Declared righteous through faith in Christ.", example: "Romans 3:24 – justified freely by grace.", memory: "Faith alone", tag: "PROCESSES" },
+            { term: "Immanuel Kant", definition: "Philosopher who restricted religion to practical reason (ethics).", example: "God is a postulate of morality.", memory: "Critique of Pure Reason", tag: "CONTROVERSIES" },
+            { term: "Karl Barth", definition: "20th-century theologian who rejected natural theology.", example: "Emphasized the Word of God as wholly other.", memory: "Church Dogmatics", tag: "CONTROVERSIES" },
+            { term: "Sola Scriptura", definition: "The Reformation principle that Scripture alone is the final authority.", example: "The Bible is the supreme rule for faith and life.", memory: "Scripture alone", tag: "FORMULAS" },
+            { term: "TULIP", definition: "Acronym for Calvinist soteriology: Total depravity, Unconditional election, Limited atonement, Irresistible grace, Perseverance of the saints.", example: "Summarizes Reformed theology.", memory: "TULIP flower", tag: "FORMULAS" }
+        ];
+    }
+
+    // --- 6. DYNAMIC LEVEL LOGIC ---
+    window.getItemsForLevel = function(level, allItems) {
+        if (!allItems || allItems.length === 0) {
+            allItems = getFallbackConcepts();
+        }
+        let count = 10;
+        if (level === 'basic') count = Math.floor(allItems.length * 0.25);
+        else if (level === 'intermediate') count = Math.floor(allItems.length * 0.6);
+        else if (level === 'advanced') count = allItems.length;
+        count = Math.max(5, Math.min(count, allItems.length));
+        let shuffled = [...allItems];
+        for (let i = shuffled.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+        }
+        return shuffled.slice(0, count);
+    };
+
+    // --- 7. ENHANCED PROMPT FOR THE LEARN WIZARD ---
+    if (typeof window.buildCheatsheetPrompt === 'function') {
+        console.log('⚠️ Overwriting old buildCheatsheetPrompt with advanced version.');
+    }
+    window.buildCheatsheetPrompt = function(node) {
+        const content = node.content || 'No content provided.';
+        return `You are an expert educational content designer. You are also a domain specialist.
+Your task is to create a COMPACT, DENSE CHEATSHEET for the topic "${node.name}".
+Extract 50+ distinct, examinable concepts from the provided content.
+
+CRITICAL REQUIREMENTS:
+1. For each concept, provide: term, definition (simple 1-sentence), example, and a memory aid.
+2. Categorize each concept into one of these 5 tags: DEFINITION, PERSON, PROCESS, CONTROVERSY, FORMULA.
+3. OUTPUT ONLY VALID JSON in a markdown code block. Follow this schema:
+[
+  { "term": "...", "definition": "...", "example": "...", "memory": "...", "tag": "DEFINITION" }
+]
+
+Here is the content:
+${content.substring(0, 8000)}
+
+Output ONLY the JSON code block. No extra text.`;
+    };
+
+    console.log('🚀 Advanced 10-Expert Engine loaded.');
+    console.log('📋 Cheatsheet and Quiz generators ready for print.');
 })();
 </script>
 </body>
