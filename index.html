@@ -8459,30 +8459,36 @@ window.addEventListener('load', async () => {
     }
     
     // --- Level Selector for Cheatsheet ---
-    document.querySelectorAll('.learn-level-btn').forEach(btn => {
-        btn.addEventListener('click', function() {
-            const level = this.dataset.level;
-            window._learnLevel = level;
-            // Update visual selection
-            document.querySelectorAll('.learn-level-btn').forEach(b => {
-                b.style.background = '';
-                b.style.borderColor = 'rgba(255,255,255,0.08)';
-                b.style.color = '#e2e8f0';
+            document.querySelectorAll('.learn-level-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const level = this.dataset.level;
+                    window._learnLevel = level;
+                    
+                    // Update visual selection
+                    document.querySelectorAll('.learn-level-btn').forEach(b => {
+                        b.style.background = '';
+                        b.style.borderColor = 'rgba(255,255,255,0.08)';
+                        b.style.color = '#e2e8f0';
+                    });
+                    this.style.background = 'rgba(45,212,191,0.15)';
+                    this.style.borderColor = '#2dd4bf';
+                    this.style.color = '#2dd4bf';
+                    document.getElementById('learn-level-display').textContent = 'Current: ' + level.charAt(0).toUpperCase() + level.slice(1);
+                    
+                    // 🔥 FIX: ALWAYS update the prompt when in cheatsheet mode (even if not in step 1)
+                    // Also update when in step 0 (mode selection) — we need to store the prompt for later
+                    const node = State.nodes.find(n => n.id === currentNodeId);
+                    if (node && typeof window.buildAdvancedPrompt === 'function') {
+                        const prompt = window.buildAdvancedPrompt(node, level);
+                        // Store the prompt so it's ready when the user clicks "Cheatsheet"
+                        window._cheatsheetPromptCache = prompt;
+                        // If we're already in step 1, update it immediately
+                        if (currentStep === 1 && learnMode === 'cheatsheet') {
+                            document.getElementById('learn-prompt-text').innerText = prompt;
+                        }
+                    }
+                });
             });
-            this.style.background = 'rgba(45,212,191,0.15)';
-            this.style.borderColor = '#2dd4bf';
-            this.style.color = '#2dd4bf';
-            document.getElementById('learn-level-display').textContent = 'Current: ' + level.charAt(0).toUpperCase() + level.slice(1);
-            
-            // Update the prompt if already in step 1
-            if (currentStep === 1 && learnMode === 'cheatsheet') {
-                const node = State.nodes.find(n => n.id === currentNodeId);
-                if (node && typeof window.buildAdvancedPrompt === 'function') {
-                    document.getElementById('learn-prompt-text').innerText = window.buildAdvancedPrompt(node, level);
-                }
-            }
-        });
-    });
 
     // --- Handle copy button clicks ---
     document.addEventListener('click', async (e) => {
@@ -11295,6 +11301,7 @@ document.addEventListener('drop', (e) => {
     let learnMode = 'detail'; // Default to 'detail' mode to prevent undefined errors
     window.learnMode = learnMode; // Expose globally for other scripts
     const recentLessonsKey = 'learn_recent_htmls_v2';
+    const cheatsheetHistoryKey = 'cheatsheet_recent_json_v2';  // NEW: separate key for cheatsheet JSON
 
     // ---- MODE SELECTION HANDLERS (safe — waits for elements to exist) ----
     function bindModeButtons() {
@@ -11379,14 +11386,15 @@ document.addEventListener('drop', (e) => {
         }
         return [];
     }
-    function saveRecentLesson(htmlOrArray) {
+    function saveRecentLesson(htmlOrArray, mode = 'detail') {
         let history;
+        const key = (mode === 'cheatsheet') ? cheatsheetHistoryKey : recentLessonsKey;
         if (Array.isArray(htmlOrArray)) {
             history = htmlOrArray;
         } else {
             const html = htmlOrArray;
             if (!html.trim()) return;
-            history = loadRecentLessons();
+            history = loadRecentLessons(mode);
             history = history.filter(entry => entry.html !== html);
             history.unshift({
                 name: formatLearnTime(new Date()),
@@ -11394,13 +11402,35 @@ document.addEventListener('drop', (e) => {
                 timestamp: Date.now()
             });
         }
-        localStorage.setItem(recentLessonsKey, JSON.stringify(history.slice(0, 5)));
-        updateRecentDropdown();
+        localStorage.setItem(key, JSON.stringify(history.slice(0, 5)));
+        updateRecentDropdown(mode);
     }
-    function updateRecentDropdown() {
+    
+    function loadRecentLessons(mode = 'detail') {
+        const key = (mode === 'cheatsheet') ? cheatsheetHistoryKey : recentLessonsKey;
+        const stored = localStorage.getItem(key);
+        if (stored) {
+            try {
+                const parsed = JSON.parse(stored);
+                if (parsed.length && typeof parsed[0] === 'string') {
+                    const migrated = parsed.map(html => ({
+                        name: formatLearnTime(new Date()),
+                        html: html,
+                        timestamp: Date.now()
+                    }));
+                    saveRecentLesson(migrated, mode);
+                    return migrated;
+                }
+                return parsed;
+            } catch(e) { return []; }
+        }
+        return [];
+    }
+    
+    function updateRecentDropdown(mode = 'detail') {
         const select = document.getElementById('learn-recent-select');
         if (!select) return;
-        const history = loadRecentLessons();
+        const history = loadRecentLessons(mode);
         select.innerHTML = '<option value="">-- Select a previous lesson --</option>';
         history.forEach((entry, idx) => {
             let displayName = entry.name || 'Unknown';
@@ -11413,16 +11443,36 @@ document.addEventListener('drop', (e) => {
             select.appendChild(option);
         });
     }
-
+    function updateRecentDropdown(mode = 'detail') {
+        const select = document.getElementById('learn-recent-select');
+        if (!select) return;
+        // 🔥 FIX: Pass the mode to load the correct history
+        const history = loadRecentLessons(mode);
+        select.innerHTML = '<option value="">-- Select a previous lesson --</option>';
+        history.forEach((entry, idx) => {
+            let displayName = entry.name || 'Unknown';
+            if (entry.html && entry.html.length > 40) {
+                displayName += ' (' + entry.html.substring(0, 40).replace(/\s+/g, ' ') + '…)';
+            }
+            const option = document.createElement('option');
+            option.value = idx;
+            option.textContent = displayName;
+            select.appendChild(option);
+        });
+    }
     document.getElementById('learn-clear-history')?.addEventListener('click', () => {
-        localStorage.removeItem(recentLessonsKey);
-        updateRecentDropdown();
+        const mode = learnMode || window.learnMode || 'detail';
+        const key = (mode === 'cheatsheet') ? cheatsheetHistoryKey : recentLessonsKey;
+        localStorage.removeItem(key);
+        updateRecentDropdown(mode);
         UI.toast('History cleared');
     });
     document.getElementById('learn-recent-select')?.addEventListener('change', (e) => {
         const idx = parseInt(e.target.value);
         if (isNaN(idx)) return;
-        const history = loadRecentLessons();
+        // 🔥 FIX: Pass the current mode so we load the correct history
+        const mode = learnMode || window.learnMode || 'detail';
+        const history = loadRecentLessons(mode);
         if (history[idx] && history[idx].html) {
             document.getElementById('learn-html-input').value = history[idx].html;
             UI.toast('Loaded previous lesson from ' + history[idx].name);
@@ -11629,6 +11679,12 @@ function buildPrompt(node) {
         if (!node) return;
         document.getElementById('learn-modal-title').querySelector('span').innerText = node.name;
         
+        // 🔥 FIX: Pre-generate the cheatsheet prompt for the default level (basic)
+        const defaultLevel = window._learnLevel || 'basic';
+        if (node && typeof window.buildAdvancedPrompt === 'function') {
+            window._cheatsheetPromptCache = window.buildAdvancedPrompt(node, defaultLevel);
+        }
+        
         // ----- SHOW STEP 0: MODE SELECTION -----
         document.getElementById('learn-step0').style.display = 'block';
         document.getElementById('learn-step1').style.display = 'none';
@@ -11676,11 +11732,24 @@ function buildPrompt(node) {
 
     // Navigation
     document.getElementById('learn-step1-next')?.addEventListener('click', () => {
+        const mode = learnMode || window.learnMode || 'detail';
+        // If in cheatsheet mode, ensure the prompt is set
+        if (mode === 'cheatsheet') {
+            const node = State.nodes.find(n => n.id === currentNodeId);
+            const level = window._learnLevel || 'basic';
+            if (node && typeof window.buildAdvancedPrompt === 'function') {
+                const prompt = window.buildAdvancedPrompt(node, level);
+                document.getElementById('learn-prompt-text').innerText = prompt;
+                window._cheatsheetPromptCache = prompt;
+            }
+        }
         currentStep = 2;
         document.getElementById('learn-step1').style.display = 'none';
         document.getElementById('learn-step2').style.display = 'block';
-      	updateRecentDropdown();
-      	if (typeof refreshCustomDropdown === 'function') refreshCustomDropdown('learn-recent-select');
+        // Update the recent dropdown with the correct mode
+        const modeForDropdown = (mode === 'cheatsheet') ? 'cheatsheet' : 'detail';
+        updateRecentDropdown(modeForDropdown);
+        if (typeof refreshCustomDropdown === 'function') refreshCustomDropdown('learn-recent-select');
         updateStepIndicators(2);
     });
     document.getElementById('learn-step2-back')?.addEventListener('click', () => {
@@ -11750,7 +11819,7 @@ function validateHTML(html) {
                     document.getElementById('learn-lesson-iframe').srcdoc = raw;
                 }
                 // Save to recent history
-                saveRecentLesson(raw);
+                saveRecentLesson(raw, 'cheatsheet');
                 
                 // Show preview step
                 currentStep = 3;
@@ -11770,7 +11839,7 @@ function validateHTML(html) {
                     return;
                 }
                 currentGeneratedHTML = raw;
-                saveRecentLesson(raw);
+                saveRecentLesson(raw, 'detail');
                 document.getElementById('learn-lesson-iframe').srcdoc = raw;
                 currentStep = 3;
                 document.getElementById('learn-step2').style.display = 'none';
@@ -15586,7 +15655,7 @@ ${content.substring(0, 8000)}`;
     }
 
     // --- 3. THE ADVANCED CHEATSHEET GENERATOR (3-Column Grid) ---
-    window.generateCheatsheetPrintHTML = function(rawContent, settings) {
+     window.generateCheatsheetPrintHTML = function(rawContent, settings) {
         let items = [];
         try {
             if (typeof rawContent === 'string') {
@@ -15614,6 +15683,14 @@ ${content.substring(0, 8000)}`;
             FORMULAS: '#5b2a8c'
         };
 
+        const tagIcons = {
+            DEFINITIONS: '📖',
+            PEOPLE: '👤',
+            PROCESSES: '🔄',
+            CONTROVERSIES: '⚔️',
+            FORMULAS: '📐'
+        };
+
         const displayNames = {
             DEFINITIONS: 'Core Definitions',
             PEOPLE: 'Key Figures',
@@ -15628,11 +15705,12 @@ ${content.substring(0, 8000)}`;
             if (tagItems.length === 0) continue;
             totalItems += tagItems.length;
             const color = colorMap[tag] || '#333';
+            const icon = tagIcons[tag] || '📌';
             const displayName = displayNames[tag] || tag;
 
             let rows = tagItems.map(c => `
                 <div class="entry">
-                    <div class="term" style="color:${color};">${c.term}</div>
+                    <div class="term" style="color:${color};">${icon} ${c.term}</div>
                     <div class="def">${c.definition}</div>
                     ${c.example ? `<div class="ex">📌 ${c.example}</div>` : ''}
                     ${c.memory ? `<div class="mem">🧠 ${c.memory}</div>` : ''}
@@ -15640,42 +15718,131 @@ ${content.substring(0, 8000)}`;
             `).join('');
 
             sectionsHtml += `
-                <div class="section-card" style="border-left-color:${color};">
-                    <div class="section-title" style="color:${color};">${displayName}</div>
+                <div class="section-card" style="border-left: 4px solid ${color}; background: ${color}08;">
+                    <div class="section-title" style="color:${color};">${icon} ${displayName}</div>
                     ${rows}
                 </div>
             `;
         }
 
         const fontSize = settings.fontSize || 8;
+        const rowShading = settings.rowShading !== false; // default true
+        const colShadows = settings.colShadows !== false; // default true
+
         return `<!DOCTYPE html>
         <html>
         <head><meta charset="UTF-8"><title>Advanced Cheatsheet</title>
         <style>
             * { box-sizing:border-box; margin:0; padding:0; }
-            body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; padding: 0.2in; background: #fff; color: #000; }
-            .grid-container { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
-            .section-card { background: #fafafa; border-radius: 8px; padding: 10px; border-left: 4px solid #ccc; page-break-inside: avoid; }
-            .section-title { font-size: 9pt; font-weight: 700; margin-bottom: 6px; }
-            .entry { margin-bottom: 6px; border-bottom: 1px solid #eee; padding-bottom: 4px; }
-            .term { font-weight: 700; font-size: 8.5pt; }
-            .def { font-size: 7.5pt; color: #222; margin-top: 1px; }
-            .ex { font-size: 7pt; color: #555; margin-top: 1px; }
-            .mem { font-size: 7pt; color: #2d6a4f; font-style: italic; margin-top: 1px; }
-            .header { border-bottom: 2px solid #000; padding-bottom: 6px; margin-bottom: 12px; }
-            .header h2 { font-size: 12pt; font-weight: 700; }
-            .header .count { font-size: 8pt; color: #555; font-weight: 400; }
+            body { 
+                font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+                padding: 0.2in; 
+                background: #ffffff; 
+                color: #000000; 
+                font-size: ${fontSize}pt;
+            }
+            .grid-container { 
+                display: grid; 
+                grid-template-columns: 1fr 1fr 1fr; 
+                gap: 12px; 
+            }
+            .section-card { 
+                background: #f8fafc; 
+                border-radius: 8px; 
+                padding: 10px 12px; 
+                border-left: 4px solid #ccc; 
+                page-break-inside: avoid;
+                border: ${colShadows ? '1px solid #e2e8f0' : 'none'};
+            }
+            .section-title { 
+                font-size: 9pt; 
+                font-weight: 700; 
+                margin-bottom: 6px; 
+                padding-bottom: 4px;
+                border-bottom: 2px solid currentColor;
+            }
+            .entry { 
+                margin-bottom: 5px; 
+                padding-bottom: 4px; 
+                border-bottom: ${rowShading ? '1px solid #eef2f6' : 'none'};
+            }
+            .entry:last-child { border-bottom: none; }
+            .term { 
+                font-weight: 700; 
+                font-size: 8.5pt; 
+                display: flex;
+                align-items: center;
+                gap: 4px;
+            }
+            .def { 
+                font-size: 7.5pt; 
+                color: #1a1a2e; 
+                margin-top: 1px; 
+                line-height: 1.4;
+            }
+            .ex { 
+                font-size: 7pt; 
+                color: #475569; 
+                margin-top: 1px; 
+                line-height: 1.3;
+            }
+            .mem { 
+                font-size: 7pt; 
+                color: #2d6a4f; 
+                font-style: italic; 
+                margin-top: 1px; 
+                background: #f0fdf4;
+                padding: 1px 6px;
+                border-radius: 4px;
+                display: inline-block;
+            }
+            .header { 
+                border-bottom: 2px solid #1a1a2e; 
+                padding-bottom: 6px; 
+                margin-bottom: 12px; 
+                display: flex;
+                justify-content: space-between;
+                align-items: flex-end;
+            }
+            .header h2 { 
+                font-size: 13pt; 
+                font-weight: 700; 
+                color: #1a1a2e;
+            }
+            .header .count { 
+                font-size: 8pt; 
+                color: #64748b; 
+                font-weight: 400; 
+            }
             @page { margin: 0.2in; }
-            .footer { margin-top: 16px; font-size: 7pt; color: #94a3b8; text-align: center; border-top: 1px solid #e2e8f0; padding-top: 6px; }
-            @media print { .section-card { break-inside: avoid; } }
+            .footer { 
+                margin-top: 16px; 
+                font-size: 6.5pt; 
+                color: #94a3b8; 
+                text-align: center; 
+                border-top: 1px solid #e2e8f0; 
+                padding-top: 6px; 
+            }
+            @media print { 
+                .section-card { break-inside: avoid; } 
+                body { padding: 0.15in; }
+            }
+            /* Alternating row shading for entries */
+            .section-card .entry:nth-child(odd) { 
+                background: ${rowShading ? 'rgba(0,0,0,0.02)' : 'transparent'};
+                padding-left: ${rowShading ? '4px' : '0'};
+                padding-right: ${rowShading ? '4px' : '0'};
+                border-radius: ${rowShading ? '4px' : '0'};
+            }
         </style>
         </head>
         <body>
             <div class="header">
-                <h2>📋 Advanced Cheatsheet <span class="count">(${totalItems} concepts)</span></h2>
+                <h2>📋 Theology Cheatsheet</h2>
+                <span class="count">${totalItems} concepts · ${Object.keys(clusters).filter(k => clusters[k].length > 0).length} sections</span>
             </div>
             <div class="grid-container">${sectionsHtml}</div>
-            <div class="footer">© 2026 · Brain.try4ever.com · Generated by 5-Expert System</div>
+            <div class="footer">© 2026 · brain.try4ever.com · Generated by 5-Expert System</div>
         </body>
         </html>`;
     };
