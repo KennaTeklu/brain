@@ -14869,18 +14869,18 @@ setTimeout(() => {
         showAnswerKey: true
     };
 
-    function loadSettings() {
-        try {
-            const saved = localStorage.getItem('printSettings');
-            return saved ? { ...DEFAULTS, ...JSON.parse(saved) } : { ...DEFAULTS };
-        } catch (e) {
-            return { ...DEFAULTS };
-        }
+function loadSettings(key = 'printSettings') {
+    try {
+        const saved = localStorage.getItem(key);
+        return saved ? { ...DEFAULTS, ...JSON.parse(saved) } : { ...DEFAULTS };
+    } catch (e) {
+        return { ...DEFAULTS };
     }
+}
 
-    function saveSettings(s) {
-        localStorage.setItem('printSettings', JSON.stringify(s));
-    }
+function saveSettings(s, key = 'printSettings') {
+    localStorage.setItem(key, JSON.stringify(s));
+}
 
     // ---- Generate the full exam HTML ----
     function generateExamHTML(settings, questionsParam = null) {
@@ -15244,8 +15244,12 @@ setTimeout(() => {
                         ? generateCheatsheetPrintHTML(window._printContent, settings)
                         : '<p>Cheatsheet generator not loaded yet.</p>';
                 } else {
-                    // Use existing quiz generator
-                    html = generateExamHTML(settings);
+                    const questions = window._printContent || null;
+                    if (questions && typeof generateAdvancedQuizPrint === 'function') {
+                        html = generateAdvancedQuizPrint(questions, settings);
+                    } else {
+                        html = generateExamHTML(settings, questions);
+                    }
                 }
                 document.getElementById('print-preview').srcdoc = html;
             };
@@ -15310,7 +15314,13 @@ setTimeout(() => {
                         ? generateCheatsheetPrintHTML(window._printContent, settings)
                         : '<p>Error: Cheatsheet generator not loaded.</p>';
                 } else {
-                    html = generateExamHTML(settings);
+                    // Use advanced quiz generator if questions were provided
+                    const questions = window._printContent || null;
+                    if (questions && typeof generateAdvancedQuizPrint === 'function') {
+                        html = generateAdvancedQuizPrint(questions, settings);
+                    } else {
+                        html = generateExamHTML(settings, questions);
+                    }
                 }
                 closeModal();
                 if (html) printHTML(html);
