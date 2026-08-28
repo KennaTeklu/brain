@@ -11670,26 +11670,32 @@ function buildPrompt(node) {
         if (!node) return;
         document.getElementById('learn-modal-title').querySelector('span').innerText = node.name;
         
-        // Use the advanced prompt builder (from Step 4) when in cheatsheet mode
-        let prompt = '';
-        const mode = learnMode || window.learnMode || 'detail';
-        if (mode === 'cheatsheet') {
-            const level = window._learnLevel || 'basic';
-            prompt = window.buildAdvancedPrompt ? window.buildAdvancedPrompt(node, level) : buildPrompt(node);
-        } else {
-            prompt = buildPrompt(node);
-        }
-        document.getElementById('learn-prompt-text').innerText = prompt;
-        currentStep = 1;
-        document.getElementById('learn-step1').style.display = 'block';
+        // ----- SHOW STEP 0: MODE SELECTION -----
+        document.getElementById('learn-step0').style.display = 'block';
+        document.getElementById('learn-step1').style.display = 'none';
         document.getElementById('learn-step2').style.display = 'none';
         document.getElementById('learn-step3').style.display = 'none';
         document.getElementById('learn-html-input').value = '';
         document.getElementById('learn-validate-error').style.display = 'none';
         document.getElementById('learn-lesson-iframe').srcdoc = '';
-        updateStepIndicators(1);
+        
+        currentStep = 0;
+        // Update step badges to show Step 0 as active
+        document.querySelectorAll('#learn-wizard-steps .step-badge').forEach((badge) => {
+            badge.classList.remove('active');
+        });
+        const firstBadge = document.querySelector('#learn-wizard-steps .step-badge[data-step="1"]');
+        if (firstBadge) {
+            firstBadge.textContent = '0. Mode';
+            firstBadge.classList.add('active');
+        }
+        // Reset mode to detail by default (will be changed when user clicks a button)
+        learnMode = 'detail';
+        window.learnMode = 'detail';
+        
         UI.showModal('learn-wizard-modal');
-                // Bind mode buttons now that the modal is definitely visible
+        
+        // Bind mode buttons (they will handle navigation to Step 1 or Cheatsheet)
         bindModeButtons();
     }
     window.openLearnWizard = openLearnWizard;
