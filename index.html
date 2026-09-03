@@ -16204,5 +16204,175 @@ Output ONLY the JSON code block. No extra text.`;
     console.log('📋 Cheatsheet and Quiz generators ready for print.');
 })();
 </script>
+<script>
+(function() {
+    // ---- Wait for dock to exist ----
+    function init() {
+        const dock = document.getElementById('dock');
+        const brainBtn = document.getElementById('dock-add');
+        if (!dock || !brainBtn) {
+            setTimeout(init, 200);
+            return;
+        }
+
+        // ---- Create "Add Profile" button ----
+        const addBtn = document.createElement('button');
+        addBtn.id = 'dock-add-profile';
+        addBtn.className = 'btn-secondary';
+        addBtn.innerHTML = '<i class="fas fa-plus-circle"></i> Add Profile';
+        addBtn.title = 'Create a fresh Chrome profile for this app';
+        brainBtn.parentNode.insertBefore(addBtn, brainBtn.nextSibling);
+
+        // ---- Build modal HTML ----
+        const modalId = 'profile-wizard-modal';
+        const modalHTML = `
+        <div id="${modalId}" style="
+            position: fixed;
+            inset: 0;
+            z-index: 100000;
+            background: rgba(0,0,0,0.7);
+            backdrop-filter: blur(8px);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        ">
+            <div style="
+                background: rgba(0,0,0,0.85);
+                border: 1px solid rgba(255,255,255,0.1);
+                border-radius: 20px;
+                padding: 28px;
+                max-width: 520px;
+                width: 100%;
+                box-shadow: 0 16px 48px rgba(0,0,0,0.6);
+                position: relative;
+                color: #e2e8f0;
+                font-family: system-ui, sans-serif;
+            ">
+                <button id="wizard-close" style="
+                    position: absolute;
+                    top: 12px;
+                    right: 16px;
+                    background: none;
+                    border: none;
+                    color: #94a3b8;
+                    font-size: 20px;
+                    cursor: pointer;
+                    padding: 4px;
+                    line-height: 1;
+                ">✕</button>
+
+                <div style="margin-bottom: 6px; font-size: 13px; color: #94a3b8;">
+                    🖥️ <span id="wizard-os" style="color: #2dd4bf; font-weight: 600;">Loading...</span>
+                </div>
+
+                <div id="wizard-cmd" style="
+                    background: #0a0c12;
+                    border: 1px solid rgba(255,255,255,0.08);
+                    border-radius: 10px;
+                    padding: 14px 16px;
+                    font-family: monospace;
+                    font-size: 14px;
+                    color: #facc15;
+                    word-break: break-all;
+                    margin: 8px 0;
+                    cursor: pointer;
+                    user-select: all;
+                ">Loading...</div>
+
+                <button id="wizard-copy" style="
+                    padding: 10px 24px;
+                    border-radius: 30px;
+                    border: none;
+                    font-weight: 600;
+                    font-size: 14px;
+                    cursor: pointer;
+                    background: #2dd4bf;
+                    color: #000;
+                    transition: 0.15s;
+                ">📋 Copy</button>
+
+                <div style="font-size: 12px; color: #64748b; margin-top: 14px; line-height: 1.6;">
+                    Paste into: <code id="wizard-paste-target" style="background:rgba(255,255,255,0.06); padding:1px 6px; border-radius:4px; color:#e2e8f0;">Win+R</code>
+                </div>
+
+                <div style="font-size: 11px; color: #64748b; margin-top: 8px; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 10px;">
+                    ✏️ After opening, rename the profile in Chrome's avatar menu.
+                </div>
+            </div>
+        </div>
+        `;
+
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+
+        const modal = document.getElementById(modalId);
+        const closeBtn = document.getElementById('wizard-close');
+        const cmdDisplay = document.getElementById('wizard-cmd');
+        const osLabel = document.getElementById('wizard-os');
+        const pasteTarget = document.getElementById('wizard-paste-target');
+        const copyBtn = document.getElementById('wizard-copy');
+
+        // ---- OS detection (reused) ----
+        const ua = navigator.userAgent.toLowerCase();
+        let os = 'windows';
+        let osName = 'Windows';
+        if (ua.includes('mac')) { os = 'mac'; osName = 'macOS'; }
+        else if (ua.includes('linux')) { os = 'linux'; osName = 'Linux'; }
+        osLabel.textContent = osName;
+
+        const profileName = 'Study';
+        const url = 'https://brain.try4ever.com';
+
+        let cmd = '';
+        let target = '';
+        if (os === 'windows') {
+            cmd = `cmd /c "start chrome --profile-directory="${profileName}" ${url}"`;
+            target = 'Win+R';
+        } else if (os === 'mac') {
+            cmd = `osascript -e 'do shell script "open -a \\"Google Chrome\\" --args --profile-directory=\\"${profileName}\\" ${url}"'`;
+            target = 'Cmd+Space';
+        } else {
+            cmd = `google-chrome --profile-directory="${profileName}" ${url}`;
+            target = 'Ctrl+Alt+T';
+        }
+
+        cmdDisplay.textContent = cmd;
+        pasteTarget.textContent = target;
+
+        // ---- Copy ----
+        copyBtn.addEventListener('click', () => {
+            navigator.clipboard.writeText(cmd).then(() => {
+                copyBtn.textContent = '✓';
+                setTimeout(() => copyBtn.textContent = '📋 Copy', 1200);
+            }).catch(() => {
+                alert('Copy failed. Select the command manually.');
+            });
+        });
+
+        // ---- Click to select ----
+        cmdDisplay.addEventListener('click', () => {
+            const range = document.createRange();
+            range.selectNodeContents(cmdDisplay);
+            const sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(range);
+        });
+
+        // ---- Show modal on button click ----
+        addBtn.addEventListener('click', () => {
+            modal.style.display = 'flex';
+        });
+
+        // ---- Close modal ----
+        const closeModal = () => { modal.style.display = 'none'; };
+        closeBtn.addEventListener('click', closeModal);
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) closeModal();
+        });
+    }
+
+    init();
+})();
+</script>
 </body>
 </html>
